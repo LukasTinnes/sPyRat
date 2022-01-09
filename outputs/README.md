@@ -1,0 +1,1 @@
+Outputs, like csv or recompilation will be send to this folder.

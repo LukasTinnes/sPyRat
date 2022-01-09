@@ -166,6 +166,11 @@ cmake-build-*/
 # IntelliJ
 out/
 
+# Outputs folder
+outputs/*
+outputs/**
+!outputs/README.md
+
 # mpeltonen/sbt-idea plugin
 .idea_modules/
 

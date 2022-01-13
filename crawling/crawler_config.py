@@ -9,7 +9,7 @@ class CrawlerConfig:
     It contains a simple collection of pointers from string to Crawler.
     """
 
-    def get_id_for_class(self, crawler_class:Crawler) -> str:
+    def get_id_for_class(self, crawler_class:Crawler) -> str: # TODO Force bijektion
         """
         Returns the string representation of the given crawler.
         :param crawler_class:
@@ -59,4 +59,3 @@ class CrawlerConfig:
         :return:
         """
         ...
-

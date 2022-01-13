@@ -1,5 +1,4 @@
 from crawling.crawler_data_structures.crawl_data import CrawlData
-from crawling.crawler_config import CrawlerConfig
 from typing import List
 from pandas import DataFrame
 
@@ -12,7 +11,7 @@ class CrawlPatternsData:
     def __init__(self, crawl_data: List[CrawlData]):
         ...
 
-    def get_frame_for_pattern(self, pattern: str, config: CrawlerConfig) -> DataFrame:
+    def get_dataframe_for_pattern(self, pattern: str) -> DataFrame:
         """
         Returns the data frame, for a pattern, given a CrawlerConfig.
         :param pattern:
@@ -20,9 +19,10 @@ class CrawlPatternsData:
         """
         ...
 
-    def compile_frame_for_all(self) -> DataFrame:
+    def compile_dataframe_for_all(self) -> DataFrame:
         """
         Returns a data frame that concatenates ALL the frames that it holds.
+        start_byte( inclusive, starts at zero), end_byte (inclusive), size (in bytes), confidence, pattern
         :return:
         """
         ...

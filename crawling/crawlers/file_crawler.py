@@ -1,6 +1,7 @@
 from crawling.crawler import Crawler
 from crawling.crawler_data_structures.crawl_data import CrawlData
 from abc import abstractmethod
+import os
 
 
 class FileCrawler(Crawler):

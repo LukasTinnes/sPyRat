@@ -6,7 +6,8 @@ class Compiler:
     Deals with  Writing to files using Information gained from crawling
     """
 
-    def decompile(self, data: DataFrame, load_file:str, save_file_path:str, prefix:str):
+    @staticmethod
+    def decompile(data: DataFrame, load_file: str, save_file_path: str, prefix: str):
         """
         Saves data given in data frames as a new file each to the given file_path.
         :param data: The dataframe of the crawled files. Expects a format (start byte, end byte, size, confidence, file_type)
@@ -15,4 +16,12 @@ class Compiler:
         :param prefix: The prefix of the file to be saved.
         :return:
         """
-        ...
+        with open(load_file, 'rb') as load_file:
+            for index, row in data.iterrows():
+                start_byte = row["start_byte"]
+                size = row["size"]
+                file_type = row["file_type"]
+                load_file.seek(start_byte)
+                bytes = load_file.read(size)
+                with open(f"{save_file_path}\\{prefix}_{index}.{file_type}", "wb") as save_file:
+                    save_file.write(bytes)

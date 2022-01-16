@@ -1,10 +1,12 @@
 from unittest import TestCase
 from crawling.crawlers.file_crawlers.bmp_crawler import BMPCrawler
-
+import time
 
 class CrawlerBMPTests(TestCase):
 
     def test_simple_bmp(self):
         crawler = BMPCrawler()
-        frame = crawler.crawl("files\\4Pix.bmp")
+        t = time.time()
+        frame = crawler.crawl("files\\synth spiral.bmp")
+        print(time.time()-t)
         print(frame.get_data_frame())

@@ -8,7 +8,8 @@ import itertools
 
 class BMPCrawler(Crawler):
     """
-    Crawls through a file to find a file pattern at each byte.
+    Crawls through a file to find a bmp file at each byte.
+    Crawls for bmp version 3.
     """
 
     POOLS = 4
@@ -24,11 +25,11 @@ class BMPCrawler(Crawler):
             ranges = [(round(x*file_size_in_bytes/self.POOLS), round((x+1)*file_size_in_bytes/self.POOLS), file) for x in range(self.POOLS)]
             print(ranges)
             results = p.map(self.crawl_range, ranges)
-            rows = itertools.chain.from_iterable(results)
+            rows = list(itertools.chain.from_iterable(results))
 
         df = DataFrame(rows)
         df.rename(columns={0:"start_byte", 1:"end_byte", 2: "size", 3: "confidence"}, inplace=True)
-        return CrawlData(df, "bmp") # TODO pattern string
+        return CrawlData(df, "bmp") # TODO pattern s tring
 
     @staticmethod
     def crawl_range(args):
@@ -38,35 +39,176 @@ class BMPCrawler(Crawler):
         rows = []
         with open(file, "rb") as f:
             for i in range(start, end):
-                test_bytes = f.read(2)
+                test_bytes = f.read(2) # Entries that are not relevant need to be excluded as quickly as possible.
                 try:
                     header_field_string = test_bytes.decode("ASCII")
-                    if not header_field_string in ["BM", "BA", "CI", "CP", "IC", "PT"]:
+                    if not header_field_string in ["BM"]:
                         continue
                 except:
                     continue
-
                 f.seek(i)
+
+                index = 0
+
+
+                # Deal with header block
                 header_bytes = f.read(14)
                 if len(header_bytes) < 14:  # Is header long enough
                     break
 
                 header_field_string, header_size, bytes_06, bytes_08, offset = BMPCrawler._parse_header(header_bytes)
-                if not header_field_string in ["BM", "BA", "CI", "CP", "IC", "PT"]:
-                    continue
-                # Wikipedia says that the file size is not reliable. I exclude it from consideration.
 
-                f.seek(i + 14)
+
+                # Deal with info block
                 info_bytes = f.read(40)  # Only Version 3 for now.
+                index += 2 + 14 + 40
                 if len(info_bytes) < 40:
                     break
-                BMPCrawler._parse_info_block(info_bytes)
+                _, width, height, planes, bit_count, compression, image_data_size, _, _, col_bit_count, _ = BMPCrawler._parse_info_block(info_bytes)
+                if not BMPCrawler._validate_info_block(planes, bit_count, compression, height):
+                    continue
+
+
+                # Deal with color Masks
+                if compression == 3: # No color masks if compression is 3
+                    mask_bytes = f.read(3*4)
+                    index += 3*4
+                    if len(mask_bytes) < 3*4:
+                        break
+                    r, g, b = BMPCrawler._parse_color_masks(mask_bytes)
+                    if not BMPCrawler._validate_color_masks(r, g, b, col_bit_count):
+                        continue
+
+
+                # Deal with color table
+                if not col_bit_count == 0 or (col_bit_count and bit_count in [1,4,8]):
+                    entries = 2 ** bit_count if col_bit_count == 0 else col_bit_count
+                    color_table_bytes = f.read(entries * 4)  # Every entry is 4 bytes long
+                    index += entries * 4
+                    if len(color_table_bytes) < entries * 4:
+                        break
+
+                    if not BMPCrawler._validate_color_table(color_table_bytes, col_bit_count):
+                        continue
+
+                # parse image data
+                actual_image_data_size = 0
+                if compression == 0:
+                    if image_data_size == 0:
+                        if compression in [0,3]:
+                            remainder = width % 4
+                            actual_width = width if remainder == 0 else width + 4
+
+                    else:
+                        actual_image_data_size = image_data_size
+                else:
+                    actual_image_data_size = image_data_size
+                index += actual_image_data_size
+
+                image_data_bytes = f.read(actual_image_data_size)
+                index += actual_image_data_size
+                if len(image_data_bytes) < actual_image_data_size:
+                    break
 
                 rows.append([i, i + header_size - 1, header_size, 0])
         return rows
 
     @staticmethod
+    def _validate_color_table(table_bytes, col_bit_count):
+        if not col_bit_count in [1,4,8]: # TODO. Die deutsche wikipedia sagt hier [1,4,8] die englische hat noch mehr werte wie 2. Was ist hier richtig?
+            for i in range(3, len(table_bytes), 4):
+                if not table_bytes[i] == 0:
+                    return False
+        return True
+
+    @staticmethod
+    def _validate_info_block(planes, bit_count, compression, height) -> bool:
+        if not planes == 1:
+            return False
+        if not bit_count in [1, 4, 8, 16, 24, 32]:
+            return False
+        if not compression in [0, 1, 2, 3]:
+            return False
+        if compression == 1 and (not bit_count == 8 or not height >= 0):
+            return False
+        if compression == 2 and (not bit_count == 4 or not height >= 0):
+            return False
+        if compression == 3 and bit_count not in [16, 32]:
+            return False
+        return True
+
+    @staticmethod
+    def _validate_color_masks(r, g, b, col_bit_count) -> bool:
+        r_arr = BMPCrawler.bytes_to_bit_list(r)
+        g_arr = BMPCrawler.bytes_to_bit_list(g)
+        b_arr = BMPCrawler.bytes_to_bit_list(b)
+
+        # TODO Check if they NEED to be at least 1
+        if not r_arr.count(1) > 0 or \
+                not g_arr.count(1) > 0 or \
+                not b_arr.count(1) > 0:
+            return False
+
+        crossings_r = BMPCrawler.bytes_crossings(r)
+        crossings_g = BMPCrawler.bytes_crossings(g)
+        crossings_b = BMPCrawler.bytes_crossings(b)
+
+        if crossings_r > 2 or crossings_g > 2 or crossings_b > 2:
+            return False
+
+        return True
+
+    @staticmethod
+    def bytes_to_bit_list(bytes_obj):
+        """
+        Creates a list ob bits (1,0 integers) from bytes
+        :param bytes_obj:
+        :return:
+        """
+        bits = []
+        for i in range(len(bytes_obj)):
+            for j in range(8):
+                bits.append((bytes_obj[i] >> j) % 2)
+        return bits
+
+    @staticmethod
+    def bytes_crossings(bytes_obj):
+        """
+        Counts the number of 0,1 and 1,0 sequences.
+        :param bytes_obj:
+        :return:
+        """
+        crossings = 0
+        last = -1
+        for x in BMPCrawler.bytes_to_bit_list(bytes_obj):
+            if last == -1:
+                last = x
+            else:
+                if not x == last:
+                    last = x
+                    crossings += 1
+
+        return crossings
+
+    @staticmethod
+    def _parse_color_masks(mask_bytes):
+        """
+        Parse the color masks of a bmp file.
+        :param mask_bytes:
+        :return:
+        """
+        r = mask_bytes[0:4]
+        g = mask_bytes[4:8]
+        b = mask_bytes[8:12]
+        return r, g, b
+
+    @staticmethod
     def _parse_header(header_bytes):
+        """
+        Parse header of a bmp file
+        :param header_bytes:
+        :return:
+        """
         header_field_bytes = header_bytes[:2]
         try:
             header_field_string = header_field_bytes.decode("ASCII")
@@ -86,6 +228,11 @@ class BMPCrawler(Crawler):
 
     @staticmethod
     def _parse_info_block(info_bytes):
+        """
+        Parse the info block of a bmp file
+        :param info_bytes:
+        :return:
+        """
         size_bytes = info_bytes[:4]
         size = int.from_bytes(size_bytes, "little", signed=False)
 
@@ -96,7 +243,7 @@ class BMPCrawler(Crawler):
         height = int.from_bytes(height_bytes, "little", signed=True)
 
         planes_bytes = info_bytes[12:14]
-        planes = int.from_bytes(planes_bytes, "little", signed=False)  # Should be 1!
+        planes = int.from_bytes(planes_bytes, "little", signed=False)
 
         bit_count_bytes = info_bytes[14:16]
         bit_count = int.from_bytes(bit_count_bytes, "little", signed=False)
@@ -106,3 +253,18 @@ class BMPCrawler(Crawler):
 
         size_img_bytes = info_bytes[20:24]
         size_img = int.from_bytes(size_img_bytes, "little", signed=True)
+
+        pix_per_meter_X_bytes = info_bytes[24:28]
+        pix_per_meter_X = int.from_bytes(pix_per_meter_X_bytes, "little", signed=True)
+
+        pix_per_meter_Y_bytes = info_bytes[28:32]
+        pix_per_meter_Y = int.from_bytes(pix_per_meter_Y_bytes, "little", signed=True)
+
+        col_bit_count_bytes = info_bytes[32:36]
+        col_bit_count = int.from_bytes(col_bit_count_bytes, "little", signed=False)
+
+        color_important_bytes = info_bytes[36:40]
+        color_important = int.from_bytes(color_important_bytes, "little", signed=True)
+
+        return size, width, height, planes, bit_count, compression, size_img, pix_per_meter_X, pix_per_meter_Y, \
+               col_bit_count, color_important

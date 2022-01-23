@@ -14,6 +14,17 @@ class BMPCrawler(Crawler):
 
     POOLS = 4
 
+
+    BITMAPCOREHEADER = 12
+    OS22XBITMAPHEADER_64 = 64
+    OS22XBITMAPHEADER_16 = 16
+    BITMAPINFOHEADER = 40
+    BITMAPV2INFOHEADER = 52
+    BITMAPV3INFOHEADER = 56
+    BITMAPV4INFOHEADER = 108
+    BITMAPV5INFOHEADER = 124
+
+
     def crawl(self, file: str) -> CrawlData:
         """
         Crawls through a file to find a file pattern at each byte.
@@ -50,7 +61,6 @@ class BMPCrawler(Crawler):
 
                 index = 0
 
-
                 # Deal with header block
                 header_bytes = f.read(14)
                 if len(header_bytes) < 14:  # Is header long enough
@@ -58,19 +68,32 @@ class BMPCrawler(Crawler):
 
                 header_field_string, header_size, bytes_06, bytes_08, offset = BMPCrawler._parse_header(header_bytes)
 
-
                 # Deal with info block
-                info_bytes = f.read(40)  # Only Version 3 for now.
-                index += 2 + 14 + 40
-                if len(info_bytes) < 40:
+                dib_header_size_bytes = f.read(4)
+                if len(dib_header_size_bytes) < 4:
                     break
-                _, width, height, planes, bit_count, compression, image_data_size, _, _, col_bit_count, _ = BMPCrawler._parse_info_block(info_bytes)
+                dib_header_size = int.from_bytes(dib_header_size_bytes, "little", signed=False)
+                if dib_header_size == 40:
+                    print("|" + str(i) + "---" + str(dib_header_size) + "|")
+                if dib_header_size not in [BMPCrawler.BITMAPINFOHEADER, BMPCrawler.BITMAPCOREHEADER,
+                                           BMPCrawler.OS22XBITMAPHEADER_16, BMPCrawler.OS22XBITMAPHEADER_64,
+                                           BMPCrawler.BITMAPV2INFOHEADER, BMPCrawler.BITMAPV3INFOHEADER,
+                                           BMPCrawler.BITMAPV4INFOHEADER, BMPCrawler.BITMAPV5INFOHEADER]:
+                    continue
+                if not dib_header_size == BMPCrawler.BITMAPINFOHEADER:
+                    continue
+                info_bytes = f.read(dib_header_size-4)
+                index += 2 + 14 + 40
+                if len(info_bytes) < dib_header_size-4:
+                    break
+
+                width, height, planes, bit_count, compression, image_data_size, _, _, col_bit_count, _ = BMPCrawler._parse_info_block(info_bytes, dib_header_size)
                 if not BMPCrawler._validate_info_block(planes, bit_count, compression, height):
                     continue
 
 
                 # Deal with color Masks
-                if compression == 3: # No color masks if compression is 3
+                if compression in [3,6]:
                     mask_bytes = f.read(3*4)
                     index += 3*4
                     if len(mask_bytes) < 3*4:
@@ -81,14 +104,14 @@ class BMPCrawler(Crawler):
 
 
                 # Deal with color table
-                if not col_bit_count == 0 or (col_bit_count and bit_count in [1,4,8]):
+                if col_bit_count == 3:
                     entries = 2 ** bit_count if col_bit_count == 0 else col_bit_count
                     color_table_bytes = f.read(entries * 4)  # Every entry is 4 bytes long
                     index += entries * 4
                     if len(color_table_bytes) < entries * 4:
                         break
 
-                    if not BMPCrawler._validate_color_table(color_table_bytes, col_bit_count):
+                    if not BMPCrawler._validate_color_table(color_table_bytes):
                         continue
 
                 # parse image data
@@ -114,11 +137,10 @@ class BMPCrawler(Crawler):
         return rows
 
     @staticmethod
-    def _validate_color_table(table_bytes, col_bit_count):
-        if not col_bit_count in [1,4,8]: # TODO. Die deutsche wikipedia sagt hier [1,4,8] die englische hat noch mehr werte wie 2. Was ist hier richtig?
-            for i in range(3, len(table_bytes), 4):
-                if not table_bytes[i] == 0:
-                    return False
+    def _validate_color_table(table_bytes):
+        for i in range(3, len(table_bytes), 4):
+            if not table_bytes[i] == 0:
+                return False
         return True
 
     @staticmethod
@@ -127,7 +149,7 @@ class BMPCrawler(Crawler):
             return False
         if not bit_count in [1, 4, 8, 16, 24, 32]:
             return False
-        if not compression in [0, 1, 2, 3]:
+        if not compression in [0, 1, 2, 3, 4, 5, 6, 11, 12, 13]:
             return False
         if compression == 1 and (not bit_count == 8 or not height >= 0):
             return False
@@ -227,44 +249,41 @@ class BMPCrawler(Crawler):
         return header_field_string, header_size, bytes_06, bytes_08, offset
 
     @staticmethod
-    def _parse_info_block(info_bytes):
+    def _parse_info_block(info_bytes, size):
         """
         Parse the info block of a bmp file
         :param info_bytes:
         :return:
         """
-        size_bytes = info_bytes[:4]
-        size = int.from_bytes(size_bytes, "little", signed=False)
-
-        width_bytes = info_bytes[4:8]
+        width_bytes = info_bytes[0:4]
         width = int.from_bytes(width_bytes, "little", signed=True)
 
-        height_bytes = info_bytes[8:12]
+        height_bytes = info_bytes[4:8]
         height = int.from_bytes(height_bytes, "little", signed=True)
 
-        planes_bytes = info_bytes[12:14]
+        planes_bytes = info_bytes[8:10]
         planes = int.from_bytes(planes_bytes, "little", signed=False)
 
-        bit_count_bytes = info_bytes[14:16]
+        bit_count_bytes = info_bytes[10:12]
         bit_count = int.from_bytes(bit_count_bytes, "little", signed=False)
 
-        compression_bytes = info_bytes[16:20]
+        compression_bytes = info_bytes[12:16]
         compression = int.from_bytes(compression_bytes, "little", signed=False)
 
-        size_img_bytes = info_bytes[20:24]
+        size_img_bytes = info_bytes[16:20]
         size_img = int.from_bytes(size_img_bytes, "little", signed=True)
 
-        pix_per_meter_X_bytes = info_bytes[24:28]
+        pix_per_meter_X_bytes = info_bytes[20:24]
         pix_per_meter_X = int.from_bytes(pix_per_meter_X_bytes, "little", signed=True)
 
-        pix_per_meter_Y_bytes = info_bytes[28:32]
+        pix_per_meter_Y_bytes = info_bytes[24:28]
         pix_per_meter_Y = int.from_bytes(pix_per_meter_Y_bytes, "little", signed=True)
 
-        col_bit_count_bytes = info_bytes[32:36]
+        col_bit_count_bytes = info_bytes[28:32]
         col_bit_count = int.from_bytes(col_bit_count_bytes, "little", signed=False)
 
-        color_important_bytes = info_bytes[36:40]
+        color_important_bytes = info_bytes[32:36]
         color_important = int.from_bytes(color_important_bytes, "little", signed=True)
 
-        return size, width, height, planes, bit_count, compression, size_img, pix_per_meter_X, pix_per_meter_Y, \
+        return width, height, planes, bit_count, compression, size_img, pix_per_meter_X, pix_per_meter_Y, \
                col_bit_count, color_important

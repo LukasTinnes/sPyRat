@@ -28,9 +28,7 @@ def end_byte_exists(end_byte):
 
 
 def png_chunk_to_size(current_size_chunk):
-    byte = bytearray(current_size_chunk)
-    bytestring = b"", byte[0], byte[1], byte[2], byte[3]
-    return int.from_bytes(bytestring, byteorder="big")
+    return int.from_bytes(current_size_chunk, byteorder="big")
 
 
 def get_pairs(file, max_file_size, pool_size):
@@ -56,15 +54,13 @@ def parse_header(file, index):
     text_close = file.read(1)
     line_feed_2 = file.read(1)
     zero_bytes = file.read(3)
-    logging.debug(("Signature: ", str(signature), " Index: ", str(index), " lf: ", str(line_feed), " carriage: ",
-                   str(carriage_return), " lf2: ", str(line_feed_2), " textc: ", str(text_close), "zeroes: ",
-                   str(zero_bytes)))
     return signature, carriage_return, line_feed, text_close, line_feed_2, zero_bytes
 
 
 class PNGCrawler(FileCrawler):
     POOL_SIZE = 4
-    HEADER_SIZE = 11
+    SIGNATURE_SIZE = 11
+    HEADER_SIZE = 17
 
     def __init__(self):
         self.MAX_FILE_SIZE = 0
@@ -91,7 +87,7 @@ class PNGCrawler(FileCrawler):
                         self.add_row(file, index)
 
     def header_is_in_bounds(self, index):
-        return index + self.HEADER_SIZE < self.MAX_FILE_SIZE
+        return index + self.SIGNATURE_SIZE < self.MAX_FILE_SIZE
 
     def crawl_by_pools(self, file: str):
         ranges = self.get_crawl_ranges(file)
@@ -108,7 +104,7 @@ class PNGCrawler(FileCrawler):
 
     def find_end_byte(self, file, index):
         with open(file, "rb") as f:
-            current_index = index + 12
+            current_index = index + self.SIGNATURE_SIZE + self.HEADER_SIZE + 1
             f.seek(current_index)
             current_size_chunk = f.read(4)
             current_size = png_chunk_to_size(current_size_chunk)

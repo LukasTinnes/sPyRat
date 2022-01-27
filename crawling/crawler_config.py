@@ -29,23 +29,23 @@ class CrawlerConfig:
         """
         return self.crawl_dict[pattern]
 
-    def register_crawler_type(self, abbreviation:str, CrawlerClass: Crawler):
+    def register_crawler_type(self, pattern:str, CrawlerClass: Crawler):
         """
         Register a new representation given the string and the class it is supposed to represent
         :param abbreviation:
         :param CrawlerClass:
         :return:
         """
-        self.crawl_dict[abbreviation] = CrawlerClass
+        self.crawl_dict[pattern] = CrawlerClass
 
-    def register_crawler_types(self, abbreviations:List[str], CrawlerClass: List[Crawler]):
+    def register_crawler_types(self, patterns:List[str], CrawlerClass: List[Crawler]):
         """
         Register multiple representations.
         :param abbreviations:
         :param CrawlerClass:
         :return:
         """
-        for pattern, crawler in zip(abbreviations, CrawlerClass):
+        for pattern, crawler in zip(patterns, CrawlerClass):
             self.register_crawler_type(pattern, crawler)
 
     def save(self, file):

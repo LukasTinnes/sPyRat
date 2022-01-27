@@ -65,13 +65,13 @@ class CrawlerBMPTests(TestCase):
 
     def test_gimp_X1R5G5B5_bmp(self):
         crawler = BMPCrawler()
-        frame = crawler.crawl(self.PATH_GIMP+ "4Pix_R5G6B5.bmp")
+        frame = crawler.crawl(self.PATH_GIMP+ "4Pix_X1R5G5B5.bmp")
         self.assertEquals(frame.get_data_frame().shape[0], 1)
         self.assertEquals((frame.get_data_frame()["size"]).iloc[0], os.path.getsize(self.PATH_GIMP + "4Pix_X1R5G5B5.bmp"))
 
     def test_gimp_X8R8G8B8_bmp(self):
         crawler = BMPCrawler()
-        frame = crawler.crawl(self.PATH_GIMP + "4Pix_R5G6B5.bmp")
+        frame = crawler.crawl(self.PATH_GIMP + "4Pix_X8R8G8B8.bmp")
         self.assertEquals(frame.get_data_frame().shape[0], 1)
         self.assertEquals((frame.get_data_frame()["size"]).iloc[0], os.path.getsize(self.PATH_GIMP + "4Pix_X8R8G8B8.bmp"))
 
@@ -91,13 +91,13 @@ class CrawlerBMPTests(TestCase):
 
     def test_gimp_X1R5G5B5_no_color_bmp(self):
         crawler = BMPCrawler()
-        frame = crawler.crawl(self.PATH_GIMP+ "4Pix_R5G6B5_no_color.bmp")
+        frame = crawler.crawl(self.PATH_GIMP+ "4Pix_X1R5G5B5_no_color.bmp")
         self.assertEquals(frame.get_data_frame().shape[0], 1)
         self.assertEquals((frame.get_data_frame()["size"]).iloc[0], os.path.getsize(self.PATH_GIMP + "4Pix_X1R5G5B5_no_color.bmp"))
 
     def test_gimp_X8R8G8B8_no_color_bmp(self):
         crawler = BMPCrawler()
-        frame = crawler.crawl(self.PATH_GIMP + "4Pix_R5G6B5_no_color.bmp")
+        frame = crawler.crawl(self.PATH_GIMP + "4Pix_X8R8G8B8_no_color.bmp")
         self.assertEquals(frame.get_data_frame().shape[0], 1)
         self.assertEquals((frame.get_data_frame()["size"]).iloc[0], os.path.getsize(self.PATH_GIMP + "4Pix_X8R8G8B8_no_color.bmp"))
 

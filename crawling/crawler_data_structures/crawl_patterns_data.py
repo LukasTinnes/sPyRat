@@ -9,7 +9,7 @@ class CrawlPatternsData:
     """
 
     def __init__(self, crawl_data: List[CrawlData]):
-        ...
+        self.crawl_data = crawl_data
 
     def get_dataframe_for_pattern(self, pattern: str) -> DataFrame:
         """
@@ -17,7 +17,7 @@ class CrawlPatternsData:
         :param pattern:
         :return:
         """
-        ...
+
 
     def compile_dataframe_for_all(self) -> DataFrame:
         """

@@ -1,5 +1,6 @@
 from crawling.crawler import Crawler
 from typing import List
+import pickle
 
 
 class CrawlerConfig:
@@ -8,6 +9,9 @@ class CrawlerConfig:
     This is the class for that.
     It contains a simple collection of pointers from string to Crawler.
     """
+
+    def __init__(self):
+        self.crawl_dict = {}
 
     def get_id_for_class(self, crawler_class:Crawler) -> str: # TODO Force bijektion
         """
@@ -23,7 +27,7 @@ class CrawlerConfig:
         :param pattern:
         :return:
         """
-        ...
+        return self.crawl_dict[pattern]
 
     def register_crawler_type(self, abbreviation:str, CrawlerClass: Crawler):
         """
@@ -32,7 +36,7 @@ class CrawlerConfig:
         :param CrawlerClass:
         :return:
         """
-        ...
+        self.crawl_dict[abbreviation] = CrawlerClass
 
     def register_crawler_types(self, abbreviations:List[str], CrawlerClass: List[Crawler]):
         """
@@ -41,7 +45,8 @@ class CrawlerConfig:
         :param CrawlerClass:
         :return:
         """
-        ...
+        for pattern, crawler in zip(abbreviations, CrawlerClass):
+            self.register_crawler_type(pattern, crawler)
 
     def save(self, file):
         """
@@ -49,7 +54,8 @@ class CrawlerConfig:
         :param file:
         :return:
         """
-        ...
+        with open(file, "wb") as file:
+            pickle.dump(self, file)
 
     @staticmethod
     def load(file) -> CrawlerConfig:
@@ -58,4 +64,5 @@ class CrawlerConfig:
         :param file:
         :return:
         """
-        ...
+        with open(file, "rb") as file:
+            return pickle.load(file)

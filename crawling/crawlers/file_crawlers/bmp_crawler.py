@@ -14,7 +14,7 @@ class BMPCrawler(Crawler):
 
     POOLS = 4
 
-
+    # DIB Header Values
     BITMAPCOREHEADER = 12
     OS22XBITMAPHEADER_64 = 64
     OS22XBITMAPHEADER_16 = 16
@@ -23,6 +23,18 @@ class BMPCrawler(Crawler):
     BITMAPV3INFOHEADER = 56
     BITMAPV4INFOHEADER = 108
     BITMAPV5INFOHEADER = 124
+
+    # Compression Values
+    BI_RGB = 0
+    BI_RLE8 = 1
+    BI_RLE4 = 2
+    BI_BITFIELDS = 3
+    BI_JPEP = 4
+    BI_PNG = 5
+    BI_ALPHABITFIELDS = 6
+    BI_CMYK = 11
+    BI_CMYKRLE8 = 12
+    BI_CMYKRLE4 = 13
 
 
     def crawl(self, file: str) -> CrawlData:
@@ -95,7 +107,7 @@ class BMPCrawler(Crawler):
 
                 # Deal with color Masks
                 if dib_header_size == BMPCrawler.BITMAPINFOHEADER:
-                    if compression in [3,6]:
+                    if compression in [BMPCrawler.BI_BITFIELDS, BMPCrawler.BI_ALPHABITFIELDS]:
                         mask_bytes = f.read(3*4)
                         index += 3*4
                         if len(mask_bytes) < 3*4:
@@ -104,7 +116,7 @@ class BMPCrawler(Crawler):
                         if not BMPCrawler._validate_color_masks_rgb(r, g, b, col_bit_count):
                             continue
                 if dib_header_size == BMPCrawler.BITMAPV3INFOHEADER:
-                    if compression in [3,6]:
+                    if compression in [BMPCrawler.BI_BITFIELDS, BMPCrawler.BI_ALPHABITFIELDS]:
                         mask_bytes = info_bytes[-4*4:]
                         if len(mask_bytes) < 4*4:
                             break
@@ -113,7 +125,7 @@ class BMPCrawler(Crawler):
                             continue
                 if dib_header_size == BMPCrawler.BITMAPV5INFOHEADER:
                     remaining_bytes = info_bytes[-21*4:]
-                    if compression in [3,6]:
+                    if compression in [BMPCrawler.BI_BITFIELDS, BMPCrawler.BI_ALPHABITFIELDS]:
                         mask_bytes = remaining_bytes[:4*4]
                         if len(mask_bytes) < 4*4:
                             break
@@ -143,7 +155,7 @@ class BMPCrawler(Crawler):
                 actual_image_data_size = 0
                 if compression == 0:
                     if image_data_size == 0:
-                        if compression in [0,3]:
+                        if compression in [BMPCrawler.BI_RGB, BMPCrawler.BI_BITFIELDS]:
 
                             row_size = int((bit_count * width + 31) / 32)*4
                             actual_image_data_size = row_size * abs(height)

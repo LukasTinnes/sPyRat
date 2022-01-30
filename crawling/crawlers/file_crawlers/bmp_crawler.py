@@ -4,6 +4,7 @@ import os
 from pandas import DataFrame
 from multiprocessing import Pool
 import itertools
+from crawling.byte_array_operations import ByteArrayOperations
 
 
 class BMPCrawler(Crawler):
@@ -172,9 +173,9 @@ class BMPCrawler(Crawler):
 
     @staticmethod
     def _validate_color_masks_rgb(r, g, b, col_bit_count) -> bool:
-        r_arr = BMPCrawler.bytes_to_bit_list(r)
-        g_arr = BMPCrawler.bytes_to_bit_list(g)
-        b_arr = BMPCrawler.bytes_to_bit_list(b)
+        r_arr = ByteArrayOperations.bytearray_to_bit_list(r)
+        g_arr = ByteArrayOperations.bytearray_to_bit_list(g)
+        b_arr = ByteArrayOperations.bytearray_to_bit_list(b)
 
         # TODO Check if they NEED to be at least 1
         if not r_arr.count(1) > 0 or \
@@ -182,9 +183,9 @@ class BMPCrawler(Crawler):
                 not b_arr.count(1) > 0:
             return False
 
-        crossings_r = BMPCrawler.bytes_crossings(r)
-        crossings_g = BMPCrawler.bytes_crossings(g)
-        crossings_b = BMPCrawler.bytes_crossings(b)
+        crossings_r = ByteArrayOperations.bytes_crossings(r)
+        crossings_g = ByteArrayOperations.bytes_crossings(g)
+        crossings_b = ByteArrayOperations.bytes_crossings(b)
 
         if crossings_r > 2 or crossings_g > 2 or crossings_b > 2:
             return False
@@ -193,10 +194,10 @@ class BMPCrawler(Crawler):
 
     @staticmethod
     def _validate_color_masks_rgba(r, g, b, a, col_bit_count) -> bool:
-        r_arr = BMPCrawler.bytes_to_bit_list(r)
-        g_arr = BMPCrawler.bytes_to_bit_list(g)
-        b_arr = BMPCrawler.bytes_to_bit_list(b)
-        a_arr = BMPCrawler.bytes_to_bit_list(a)
+        r_arr = ByteArrayOperations.bytearray_to_bit_list(r)
+        g_arr = ByteArrayOperations.bytearray_to_bit_list(g)
+        b_arr = ByteArrayOperations.bytearray_to_bit_list(b)
+        a_arr = ByteArrayOperations.bytearray_to_bit_list(a)
 
         # TODO Check if they NEED to be at least 1
         if not r_arr.count(1) > 0 or \
@@ -204,48 +205,15 @@ class BMPCrawler(Crawler):
             not b_arr.count(1) > 0:
             return False
 
-        crossings_r = BMPCrawler.bytes_crossings(r)
-        crossings_g = BMPCrawler.bytes_crossings(g)
-        crossings_b = BMPCrawler.bytes_crossings(b)
-        crossings_a = BMPCrawler.bytes_crossings(a)
+        crossings_r = ByteArrayOperations.bytes_crossings(r)
+        crossings_g = ByteArrayOperations.bytes_crossings(g)
+        crossings_b = ByteArrayOperations.bytes_crossings(b)
+        crossings_a = ByteArrayOperations.bytes_crossings(a)
 
         if crossings_r > 2 or crossings_g > 2 or crossings_b > 2 or crossings_a > 2:
             return False
 
         return True
-
-
-    @staticmethod
-    def bytes_to_bit_list(bytes_obj):
-        """
-        Creates a list ob bits (1,0 integers) from bytes
-        :param bytes_obj:
-        :return:
-        """
-        bits = []
-        for i in range(len(bytes_obj)):
-            for j in range(8):
-                bits.append((bytes_obj[i] >> j) % 2)
-        return bits
-
-    @staticmethod
-    def bytes_crossings(bytes_obj):
-        """
-        Counts the number of 0,1 and 1,0 sequences.
-        :param bytes_obj:
-        :return:
-        """
-        crossings = 0
-        last = -1
-        for x in BMPCrawler.bytes_to_bit_list(bytes_obj):
-            if last == -1:
-                last = x
-            else:
-                if not x == last:
-                    last = x
-                    crossings += 1
-
-        return crossings
 
     @staticmethod
     def _parse_color_masks_rgb(mask_bytes):

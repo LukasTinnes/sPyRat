@@ -5,6 +5,8 @@ from pandas import DataFrame
 from multiprocessing import Pool
 import itertools
 from crawling.byte_array_operations import ByteArrayOperations
+from typing import Tuple
+import math
 
 
 class BMPCrawler(Crawler):
@@ -43,7 +45,6 @@ class BMPCrawler(Crawler):
     INVALID = 1
     NO_MEMORY = 2
 
-
     def crawl(self, file: str) -> CrawlData:
         """
         Crawls through a file to find a file pattern at each byte.
@@ -62,13 +63,19 @@ class BMPCrawler(Crawler):
 
     @staticmethod
     def crawl_range(args):
+        """
+        Crawls a file for bmps in a certain range of bytes.
+        :param args: Tuple of shape (start_byte, end_byte)
+        :return:
+        """
         start = args[0]
         end = args[1]
         file = args[2]
         rows = []
         with open(file, "rb") as f:
             for i in range(start, end):
-                test_bytes = f.read(2) # Entries that are not relevant need to be excluded as quickly as possible.
+                # Entries that are not relevant need to be excluded as quickly as possible.
+                test_bytes = f.read(2)
                 try:
                     header_field_string = test_bytes.decode("ASCII")
                     if not header_field_string in ["BM"]:
@@ -77,78 +84,88 @@ class BMPCrawler(Crawler):
                     continue
                 f.seek(i)
 
+                # The current offset from i
                 index = 0
+                confidence_log = 0
 
                 # Header
-                validation, byte_offset, header_data = BMPCrawler._parse_header(f)
+                validation, byte_offset, confidence, header_data = BMPCrawler._parse_header(f)
                 if validation == BMPCrawler.INVALID:
                     continue
                 elif validation == BMPCrawler.NO_MEMORY:
                     break
                 index += byte_offset
+                confidence_log += math.log(confidence, 2)
                 header_field_string, header_size, bytes_06, bytes_08, image_offset = header_data
 
 
                 # Dib Header
-                validation, offset, dib_data = BMPCrawler._parse_dib_header(f)
+                validation, offset, confidence, dib_data = BMPCrawler._parse_dib_header(f)
                 if validation == BMPCrawler.INVALID:
                     continue
                 elif validation == BMPCrawler.NO_MEMORY:
                     break
                 index += offset
+                print(confidence)
+                confidence_log += math.log(confidence, 2)
                 dib_header_size, width, height, planes, bit_count, compression, size_img, pix_per_meter_X, pix_per_meter_Y, \
                     col_bit_count, color_important, r, g, b, a, icc_profile_data, icc_profile_size = dib_data
 
 
                 # Color table
-                validation, offset, color_table_data = BMPCrawler.parse_color_table(f, col_bit_count, bit_count, dib_header_size)
+                validation, offset, confidence, color_table_data = BMPCrawler.parse_color_table(f, col_bit_count, bit_count, dib_header_size)
                 if validation == BMPCrawler.INVALID:
                     continue
                 elif validation == BMPCrawler.NO_MEMORY:
                     break
                 index += offset
+                confidence_log += math.log(confidence, 2)
 
 
                 # Deal with Gap1
-                validation, offset, gap1_data = BMPCrawler.parse_gap1(f, index, image_offset)
+                validation, offset, confidence, gap1_data = BMPCrawler.parse_gap1(f, index, image_offset)
                 if validation == BMPCrawler.INVALID:
                     continue
                 elif validation == BMPCrawler.NO_MEMORY:
                     break
                 index += offset
+                confidence_log += math.log(confidence, 2)
 
 
                 # image data
-                validation, offset, image_data = BMPCrawler.parse_image_data(f, compression, bit_count, width, height, size_img)
+                validation, offset, confidence, image_data = BMPCrawler.parse_image_data(f, compression, bit_count, width, height, size_img)
                 if validation == BMPCrawler.INVALID:
                     continue
                 elif validation == BMPCrawler.NO_MEMORY:
                     break
                 index += offset
+                confidence_log += math.log(confidence, 2)
 
 
                 # Deal with Gap2
-                validation, offset, gap2_data = BMPCrawler.parse_gap2(f, index, icc_profile_data)
+                validation, offset, confidence, gap2_data = BMPCrawler.parse_gap2(f, index, icc_profile_data)
                 if validation == BMPCrawler.INVALID:
                     continue
                 elif validation == BMPCrawler.NO_MEMORY:
                     break
                 index += offset
+                confidence_log += math.log(confidence, 2)
 
 
                 # ICC Profile Data
-                validation, offset, icc_profile_data_block = BMPCrawler.parse_icc_profile(f, dib_header_size, icc_profile_size, icc_profile_data)
+                validation, offset, confidence, icc_profile_data_block = BMPCrawler.parse_icc_profile(f, dib_header_size, icc_profile_size, icc_profile_data)
                 if validation == BMPCrawler.INVALID:
                     continue
                 elif validation == BMPCrawler.NO_MEMORY:
                     break
                 index += offset
+                confidence_log += math.log(confidence, 2)
 
-                rows.append([i, i + index, index, 0])
+                rows.append([i, i + index, index, confidence_log])
         return rows
 
     @staticmethod
-    def _validate_color_table(table_bytes):
+    def _validate_color_table(table_bytes) -> bool:
         # OK so it seems this is not a hard requirement and more of a suggestion. Thanks microsoft. So I am leaving this part out.
         for i in range(3, len(table_bytes), 4):
             if not table_bytes[i] == 0:
@@ -161,18 +178,27 @@ class BMPCrawler(Crawler):
             return False
         if not bit_count in [1, 4, 8, 16, 24, 32]:
             return False
-        if not compression in [0, 1, 2, 3, 4, 5, 6, 11, 12, 13]:
+        if not compression in [BMPCrawler.BI_RGB, BMPCrawler.BI_RLE8, BMPCrawler.BI_RLE4, BMPCrawler.BI_BITFIELDS,
+                               BMPCrawler.BI_JPEP, BMPCrawler.BI_PNG, BMPCrawler.BI_ALPHABITFIELDS, BMPCrawler.BI_CMYK,
+                               BMPCrawler.BI_CMYKRLE8, BMPCrawler.BI_CMYKRLE4]:
             return False
-        if compression == 1 and (not bit_count == 8 or not height >= 0):
+        if compression == BMPCrawler.BI_RLE8 and (not bit_count == 8 or not height >= 0):
             return False
-        if compression == 2 and (not bit_count == 4 or not height >= 0):
+        if compression == BMPCrawler.BI_RLE4 and (not bit_count == 4 or not height >= 0):
             return False
-        if compression == 3 and bit_count not in [16, 32]:
+        if compression == BMPCrawler.BI_BITFIELDS and bit_count not in [16, 32]:
             return False
         return True
 
     @staticmethod
-    def _validate_color_masks_rgb(r, g, b, col_bit_count) -> bool:
+    def _validate_color_masks_rgb(r, g, b) -> bool:
+        """
+        Validate the rgb color masks.
+        :param r: the red mask
+        :param g: the green mask
+        :param b: the blue mask
+        :return:
+        """
         r_arr = ByteArrayOperations.bytearray_to_bit_list(r)
         g_arr = ByteArrayOperations.bytearray_to_bit_list(g)
         b_arr = ByteArrayOperations.bytearray_to_bit_list(b)
@@ -193,7 +219,16 @@ class BMPCrawler(Crawler):
         return True
 
     @staticmethod
-    def _validate_color_masks_rgba(r, g, b, a, col_bit_count) -> bool:
+    def _validate_color_masks_rgba(r, g, b, a) -> bool:
+        """
+        Validate the rgba mask variety
+        :param r: the red mask
+        :param g: the green mask
+        :param b: the blue mask
+        :param a: te alpha mask
+        :param col_bit_count:
+        :return:
+        """
         r_arr = ByteArrayOperations.bytearray_to_bit_list(r)
         g_arr = ByteArrayOperations.bytearray_to_bit_list(g)
         b_arr = ByteArrayOperations.bytearray_to_bit_list(b)
@@ -216,7 +251,7 @@ class BMPCrawler(Crawler):
         return True
 
     @staticmethod
-    def _parse_color_masks_rgb(mask_bytes):
+    def _parse_color_masks_rgb(mask_bytes) -> Tuple[bytearray, bytearray, bytearray]:
         """
         Parse the color masks of a bmp file.
         :param mask_bytes:
@@ -228,7 +263,7 @@ class BMPCrawler(Crawler):
         return r, g, b
 
     @staticmethod
-    def _parse_color_masks_rgba(mask_bytes):
+    def _parse_color_masks_rgba(mask_bytes) -> Tuple[bytearray, bytearray, bytearray, bytearray]:
         """
         Parse the color masks of a bmp file.
         :param mask_bytes:
@@ -241,21 +276,23 @@ class BMPCrawler(Crawler):
         return r, g, b, a
 
     @staticmethod
-    def _parse_header(f):
+    def _parse_header(f) -> Tuple[int, int, float, tuple]:
         """
         Parse header of a bmp file
         :param header_bytes:
         :return:
         """
+        confidence = 1
         header_bytes = f.read(14)
         if len(header_bytes) < 14:  # Is header long enough
-            return False, None, None
+            return False, -1, 0, ()
 
         header_field_bytes = header_bytes[0x0:0x2]
         try:
             header_field_string = header_field_bytes.decode("ASCII")
         except:
-            header_field_string = None
+            return BMPCrawler.INVALID, -1, 0, ()
+        confidence *= 1/((2<<8)**2)
 
         header_size_bytes = header_bytes[0x2:0x6]
         header_size = int.from_bytes(header_size_bytes, "little", signed=False)
@@ -266,10 +303,10 @@ class BMPCrawler(Crawler):
         offset_bytes = header_bytes[0xA:0xD]
         offset = int.from_bytes(offset_bytes, "little", signed=False)
 
-        return BMPCrawler.VALID, 14, (header_field_string, header_size, bytes_06, bytes_08, offset)
+        return BMPCrawler.VALID, 14, confidence, (header_field_string, header_size, bytes_06, bytes_08, offset)
 
     @staticmethod
-    def _parse_dib_header(f):
+    def _parse_dib_header(f) -> Tuple[int, int, tuple]:
         """
         Parse the info block of a bmp file
         :param info_bytes:
@@ -278,24 +315,24 @@ class BMPCrawler(Crawler):
         # Deal with dib header
         dib_header_size_bytes = f.read(4)
         if len(dib_header_size_bytes) < 4:
-            return BMPCrawler.NO_MEMORY, None, None
+            return BMPCrawler.NO_MEMORY, None, None, None
 
         dib_header_size = int.from_bytes(dib_header_size_bytes, "little", signed=False)
         if dib_header_size not in [BMPCrawler.BITMAPINFOHEADER, BMPCrawler.BITMAPCOREHEADER,
                                    BMPCrawler.OS22XBITMAPHEADER_16, BMPCrawler.OS22XBITMAPHEADER_64,
                                    BMPCrawler.BITMAPV2INFOHEADER, BMPCrawler.BITMAPV3INFOHEADER,
                                    BMPCrawler.BITMAPV4INFOHEADER, BMPCrawler.BITMAPV5INFOHEADER]:
-            return BMPCrawler.INVALID, None, None
+            return BMPCrawler.INVALID, None, None, None
 
         if not dib_header_size in [BMPCrawler.BITMAPINFOHEADER, BMPCrawler.BITMAPV3INFOHEADER,
                                    BMPCrawler.BITMAPV5INFOHEADER]:
             print(f"WARNING! Found Unsupported BMP Type: {dib_header_size}")
-            return BMPCrawler.INVALID, None, None
+            return BMPCrawler.INVALID, None, None, None
 
 
         info_bytes = f.read(dib_header_size - 4)
         if len(info_bytes) < dib_header_size - 4:
-            return BMPCrawler.NO_MEMORY, None, None
+            return BMPCrawler.NO_MEMORY, None, None, None
 
         width_bytes = info_bytes[0:4]
         width = int.from_bytes(width_bytes, "little", signed=True)
@@ -328,7 +365,7 @@ class BMPCrawler(Crawler):
         color_important = int.from_bytes(color_important_bytes, "little", signed=True)
 
         if not BMPCrawler._validate_info_block(planes, bit_count, compression, height):
-            return BMPCrawler.INVALID, None, None
+            return BMPCrawler.INVALID, None, None, None
         offset = dib_header_size
 
         r, g, b, a = None, None, None, None
@@ -339,64 +376,86 @@ class BMPCrawler(Crawler):
                 mask_bytes = f.read(3 * 4)
                 offset += 3*4
                 if len(mask_bytes) < 3 * 4:
-                    return BMPCrawler.NO_MEMORY, None, None
+                    return BMPCrawler.NO_MEMORY, None, None, None
                 r, g, b = BMPCrawler._parse_color_masks_rgb(mask_bytes)
-                if not BMPCrawler._validate_color_masks_rgb(r, g, b, col_bit_count):
-                    return BMPCrawler.INVALID, None, None
+                if not BMPCrawler._validate_color_masks_rgb(r, g, b):
+                    return BMPCrawler.INVALID, None, None, None
         if dib_header_size == BMPCrawler.BITMAPV3INFOHEADER:
             if compression in [BMPCrawler.BI_BITFIELDS, BMPCrawler.BI_ALPHABITFIELDS]:
                 mask_bytes = info_bytes[-4 * 4:]
                 if len(mask_bytes) < 4 * 4:
-                    return BMPCrawler.NO_MEMORY, None, None
+                    return BMPCrawler.NO_MEMORY, None, None, None
                 r, g, b, a = BMPCrawler._parse_color_masks_rgba(mask_bytes)
-                if not BMPCrawler._validate_color_masks_rgba(r, g, b, a, col_bit_count):
-                    return BMPCrawler.INVALID, None, None
+                if not BMPCrawler._validate_color_masks_rgba(r, g, b, a):
+                    return BMPCrawler.INVALID, None, None, None
         if dib_header_size == BMPCrawler.BITMAPV5INFOHEADER:
             remaining_bytes = info_bytes[-21 * 4:]
             if compression in [BMPCrawler.BI_BITFIELDS, BMPCrawler.BI_ALPHABITFIELDS]:
                 mask_bytes = remaining_bytes[:4 * 4]
                 if len(mask_bytes) < 4 * 4:
-                    return BMPCrawler.NO_MEMORY, None, None
+                    return BMPCrawler.NO_MEMORY, None, None, None
                 r, g, b, a = BMPCrawler._parse_color_masks_rgba(mask_bytes)
-                if not BMPCrawler._validate_color_masks_rgba(r, g, b, a, col_bit_count):
-                    return BMPCrawler.INVALID, None, None
+                if not BMPCrawler._validate_color_masks_rgba(r, g, b, a):
+                    return BMPCrawler.INVALID, None, None, None
             icc_profile_data = int.from_bytes(remaining_bytes[-4 * 3:-4 * 2], "little", signed=False)
             icc_profile_size = int.from_bytes(remaining_bytes[-4 * 2:-4 * 1], "little", signed=False)
 
-        return BMPCrawler.VALID, offset, (dib_header_size, width, height, planes, bit_count, compression, size_img, pix_per_meter_X, pix_per_meter_Y, \
+        return BMPCrawler.VALID, offset, 1, (dib_header_size, width, height, planes, bit_count, compression, size_img, pix_per_meter_X, pix_per_meter_Y, \
                col_bit_count, color_important, r, g, b, a, icc_profile_data, icc_profile_size)
 
     @staticmethod
-    def parse_color_table(f, col_bit_count, bit_count, dib_header_size):
+    def parse_color_table(f, col_bit_count, bit_count, dib_header_size) -> Tuple[int, int, tuple]:
+        """
+        Parses the color table.
+        :param f:
+        :param col_bit_count:
+        :param bit_count:
+        :param dib_header_size:
+        :return:
+        """
         if ((col_bit_count == 0 and bit_count in [1, 4,
                                                   8]) or not col_bit_count == 0) and dib_header_size == BMPCrawler.BITMAPINFOHEADER:
             entries = 2 ** bit_count if col_bit_count == 0 else col_bit_count
             color_table_bytes = f.read(entries * 4)  # Every entry is 4 bytes long
             if len(color_table_bytes) < entries * 4:
-                return BMPCrawler.NO_MEMORY, None, None
-            return BMPCrawler.VALID, entries*4, None
-        return BMPCrawler.VALID, 0, None
+                return BMPCrawler.NO_MEMORY, None, None, None
+            return BMPCrawler.VALID, entries*4, 1, None
+        return BMPCrawler.VALID, 0, 1, None
 
     @staticmethod
     def parse_gap1(f, current_offset, needed_offset):
+        """
+        Parses the first gap.
+        :param f:
+        :param current_offset:
+        :param needed_offset:
+        :return:
+        """
         if not current_offset == needed_offset:
             if needed_offset < current_offset:
-                return BMPCrawler.INVALID, 0, None
+                return BMPCrawler.INVALID, 0, None, None
             gap_bytes = f.read(needed_offset - current_offset)
             return BMPCrawler.VALID, needed_offset - current_offset, (gap_bytes,)
-        return BMPCrawler.VALID, 0, (None,)
+        return BMPCrawler.VALID, 0, 1, (None,)
 
     @staticmethod
-    def parse_gap2(f, current_offset, needed_offset):
+    def parse_gap2(f, current_offset, needed_offset) -> Tuple[int, int, tuple]:
+        """
+        Parses the Seond Gap in the file.
+        :param f:
+        :param current_offset:
+        :param needed_offset:
+        :return:
+        """
         if not current_offset == needed_offset and needed_offset is not None and not needed_offset == 0:
             if needed_offset < current_offset:
-                return BMPCrawler.INVALID, 0, None
+                return BMPCrawler.INVALID, 0, None, None
             gap_bytes = f.read(needed_offset - current_offset)
             return BMPCrawler.VALID, needed_offset - current_offset, (gap_bytes,)
-        return BMPCrawler.VALID, 0, (None,)
+        return BMPCrawler.VALID, 0, 1, (None,)
 
     @staticmethod
-    def parse_image_data(f, compression, bit_count, width, height, image_data_size):
+    def parse_image_data(f, compression, bit_count, width, height, image_data_size) -> Tuple[int, int, tuple]:
         actual_image_data_size = 0
         if compression == 0:
             if image_data_size == 0:
@@ -411,15 +470,23 @@ class BMPCrawler(Crawler):
 
         image_data_bytes = f.read(actual_image_data_size)
         if len(image_data_bytes) < actual_image_data_size:
-            return BMPCrawler.NO_MEMORY, None, None
-        return BMPCrawler.VALID, actual_image_data_size, image_data_bytes
+            return BMPCrawler.NO_MEMORY, None, None, None
+        return BMPCrawler.VALID, actual_image_data_size, 1, image_data_bytes
 
     @staticmethod
-    def parse_icc_profile(f, dib_header_size, icc_profile_size, icc_profile_data):
+    def parse_icc_profile(f, dib_header_size: int, icc_profile_size: int, icc_profile_data: int) -> Tuple[int, int, float, tuple]:
+        """
+        Parses the ICC Profile
+        :param f:  The files stream
+        :param dib_header_size:
+        :param icc_profile_size:
+        :param icc_profile_data:
+        :return:
+        """
         if dib_header_size == BMPCrawler.BITMAPV5INFOHEADER:
             if icc_profile_size > 0:
                 icc_color_profile_bytes = f.read(icc_profile_size)
                 if len(icc_color_profile_bytes) < icc_profile_size:
-                    return BMPCrawler.NO_MEMORY, None, None
-                return BMPCrawler.VALID, icc_profile_data + icc_profile_size, icc_color_profile_bytes
-        return BMPCrawler.VALID, 0, (None,)
+                    return BMPCrawler.NO_MEMORY, None, None, None
+                return BMPCrawler.VALID, icc_profile_data + icc_profile_size, 1, icc_color_profile_bytes
+        return BMPCrawler.VALID, 0, 1, (None,)

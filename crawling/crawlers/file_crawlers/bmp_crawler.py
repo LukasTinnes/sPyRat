@@ -7,16 +7,14 @@ import itertools
 from crawling.byte_array_operations import ByteArrayOperations
 from typing import Tuple
 import math
+from typing import BinaryIO
 
 
 class BMPCrawler(Crawler):
     """
     Crawls through a file to find a bmp file at each byte.
-    Crawls for bmp version 3.
+    Crawls for bmp BITMAPINFOHEADER, BITMAPINFOHEADER3 and BITMAPINFOHEADER 5.
     """
-
-    # The number of multiprocessing pools to use. # TODO. This should best be a setting, the user can set.
-    POOLS = 4
 
     # DIB Header Values
     BITMAPCOREHEADER = 12
@@ -46,6 +44,11 @@ class BMPCrawler(Crawler):
     INVALID = 1
     NO_MEMORY = 2
 
+    def __init__(self, pools:int, pattern: str):
+        # The number of multiprocessing pools to use.
+        self.pools = pools
+        self.pattern = pattern
+
     def crawl(self, file: str) -> CrawlData:
         """
         Crawls through a file to find a file pattern at each byte.
@@ -53,25 +56,34 @@ class BMPCrawler(Crawler):
         :return:
         """
         file_size_in_bytes = os.path.getsize(file)
-        with Pool(self.POOLS) as p:
-            ranges = [(round(x*file_size_in_bytes/self.POOLS), round((x+1)*file_size_in_bytes/self.POOLS), file) for x in range(self.POOLS)]
+
+        # Open pools to work in parallel
+        with Pool(self.pools) as p:
+            # The crawling ranges are divided into approx. equal sections.
+            ranges = [(round(x*file_size_in_bytes/self.pools), round((x+1)*file_size_in_bytes/self.pools), file) for x in range(self.pools)]
+
             results = p.map(self.crawl_range, ranges)
+            # Concatenate results in list
             rows = list(itertools.chain.from_iterable(results))
 
         df = DataFrame(rows)
         df.rename(columns={0:"start_byte", 1:"end_byte", 2: "size", 3: "confidence"}, inplace=True)
-        return CrawlData(df, "bmp") # TODO pattern s tring
+        return CrawlData(df, self.pattern)
 
     @staticmethod
     def crawl_range(args):
         """
-        Crawls a file for bmps in a certain range of bytes.
+        Crawls a file for BMPs in a certain range of bytes.
         :param args: Tuple of shape (start_byte, end_byte)
         :return:
         """
+        # For more information see the Markdown
+
+        # Parse args from pool back to what they were.
         start = args[0]
         end = args[1]
         file = args[2]
+
         rows = []
         with open(file, "rb") as f:
             for i in range(start, end):
@@ -87,9 +99,11 @@ class BMPCrawler(Crawler):
 
                 # The current offset from i
                 index = 0
+                # The current logarithmic(!) confidence.
+                # Essentially the likely hood that the file just randomly came to be in the data.
                 confidence_log = 0
 
-                # Header
+                # Parse the BMP Header
                 validation, byte_offset, confidence, header_data = BMPCrawler._parse_header(f)
                 if validation == BMPCrawler.INVALID:
                     continue
@@ -100,7 +114,7 @@ class BMPCrawler(Crawler):
                 header_field_string, header_size, bytes_06, bytes_08, image_offset = header_data
 
 
-                # Dib Header
+                # Parse the DIB Header
                 validation, offset, confidence, dib_data = BMPCrawler._parse_dib_header(f)
                 if validation == BMPCrawler.INVALID:
                     continue
@@ -166,7 +180,7 @@ class BMPCrawler(Crawler):
         return rows
 
     @staticmethod
-    def _validate_color_table(table_bytes) -> bool:
+    def _validate_color_table(table_bytes: bytearray) -> bool:
         # OK so it seems this is not a hard requirement and more of a suggestion. Thanks microsoft. So I am leaving this part out.
         for i in range(3, len(table_bytes), 4):
             if not table_bytes[i] == 0:
@@ -174,7 +188,7 @@ class BMPCrawler(Crawler):
         return True
 
     @staticmethod
-    def _validate_info_block(planes, bit_count, compression, height) -> bool:
+    def _validate_info_block(planes: int, bit_count: int, compression: int, height: int) -> bool:
         if not planes == 1:
             return False
         if not bit_count in [1, 4, 8, 16, 24, 32]:
@@ -192,7 +206,7 @@ class BMPCrawler(Crawler):
         return True
 
     @staticmethod
-    def _validate_color_masks_rgb(r, g, b) -> bool:
+    def _validate_color_masks_rgb(r: bytearray, g: bytearray, b: bytearray) -> bool:
         """
         Validate the rgb color masks.
         :param r: the red mask
@@ -220,7 +234,7 @@ class BMPCrawler(Crawler):
         return True
 
     @staticmethod
-    def _validate_color_masks_rgba(r, g, b, a) -> bool:
+    def _validate_color_masks_rgba(r: bytearray, g: bytearray, b: bytearray, a: bytearray) -> bool:
         """
         Validate the rgba mask variety
         :param r: the red mask
@@ -252,7 +266,7 @@ class BMPCrawler(Crawler):
         return True
 
     @staticmethod
-    def _parse_color_masks_rgb(mask_bytes) -> Tuple[bytearray, bytearray, bytearray]:
+    def _parse_color_masks_rgb(mask_bytes: bytearray) -> Tuple[bytearray, bytearray, bytearray]:
         """
         Parse the color masks of a bmp file.
         :param mask_bytes:
@@ -264,7 +278,7 @@ class BMPCrawler(Crawler):
         return r, g, b
 
     @staticmethod
-    def _parse_color_masks_rgba(mask_bytes) -> Tuple[bytearray, bytearray, bytearray, bytearray]:
+    def _parse_color_masks_rgba(mask_bytes: bytearray) -> Tuple[bytearray, bytearray, bytearray, bytearray]:
         """
         Parse the color masks of a bmp file.
         :param mask_bytes:
@@ -277,7 +291,7 @@ class BMPCrawler(Crawler):
         return r, g, b, a
 
     @staticmethod
-    def _parse_header(f) -> Tuple[int, int, float, tuple]:
+    def _parse_header(f: BinaryIO) -> Tuple[int, int, float, tuple]:
         """
         Parse header of a bmp file
         :param header_bytes:
@@ -307,7 +321,7 @@ class BMPCrawler(Crawler):
         return BMPCrawler.VALID, 14, confidence, (header_field_string, header_size, bytes_06, bytes_08, offset)
 
     @staticmethod
-    def _parse_dib_header(f) -> Tuple[int, int, float, tuple]:
+    def _parse_dib_header(f: BinaryIO) -> Tuple[int, int, float, tuple]:
         """
         Parse the info block of a bmp file
         :param info_bytes:
@@ -401,11 +415,12 @@ class BMPCrawler(Crawler):
             icc_profile_data = int.from_bytes(remaining_bytes[-4 * 3:-4 * 2], "little", signed=False)
             icc_profile_size = int.from_bytes(remaining_bytes[-4 * 2:-4 * 1], "little", signed=False)
 
-        return BMPCrawler.VALID, offset, 1, (dib_header_size, width, height, planes, bit_count, compression, size_img, pix_per_meter_X, pix_per_meter_Y, \
-               col_bit_count, color_important, r, g, b, a, icc_profile_data, icc_profile_size)
+        return BMPCrawler.VALID, offset, 1, (dib_header_size, width, height, planes, bit_count, compression, size_img,
+                                             pix_per_meter_X, pix_per_meter_Y, col_bit_count, color_important,
+                                             r, g, b, a, icc_profile_data, icc_profile_size)
 
     @staticmethod
-    def parse_color_table(f, col_bit_count, bit_count, dib_header_size) -> Tuple[int, int, float, tuple]:
+    def parse_color_table(f: BinaryIO, col_bit_count: int, bit_count: int, dib_header_size: int) -> Tuple[int, int, float, tuple]:
         """
         Parses the color table.
         :param f:
@@ -424,7 +439,7 @@ class BMPCrawler(Crawler):
         return BMPCrawler.VALID, 0, 1, ()
 
     @staticmethod
-    def parse_gap1(f, current_offset, needed_offset) -> Tuple[int, int, float, tuple]:
+    def parse_gap1(f: BinaryIO, current_offset: int, needed_offset: int) -> Tuple[int, int, float, tuple]:
         """
         Parses the first gap.
         :param f:
@@ -440,7 +455,7 @@ class BMPCrawler(Crawler):
         return BMPCrawler.VALID, 0, 1, (None,)
 
     @staticmethod
-    def parse_gap2(f, current_offset, needed_offset) -> Tuple[int, int, float, tuple]:
+    def parse_gap2(f: BinaryIO, current_offset: int, needed_offset: int) -> Tuple[int, int, float, tuple]:
         """
         Parses the Seond Gap in the file.
         :param f:
@@ -456,7 +471,18 @@ class BMPCrawler(Crawler):
         return BMPCrawler.VALID, 0, 1, (None,)
 
     @staticmethod
-    def parse_image_data(f, compression, bit_count, width, height, image_data_size) -> Tuple[int, int, float, tuple]:
+    def parse_image_data(f: BinaryIO, compression: int, bit_count: int, width: int, height: int,
+                         image_data_size: int) -> Tuple[int, int, float, tuple]:
+        """
+        Parses the image data
+        :param f: The
+        :param compression:
+        :param bit_count:
+        :param width:
+        :param height:
+        :param image_data_size:
+        :return:
+        """
         actual_image_data_size = 0
         if compression == 0:
             if image_data_size == 0:
@@ -472,10 +498,11 @@ class BMPCrawler(Crawler):
         image_data_bytes = f.read(actual_image_data_size)
         if len(image_data_bytes) < actual_image_data_size:
             return BMPCrawler.NO_MEMORY, -1, 0, ()
-        return BMPCrawler.VALID, actual_image_data_size, 1, image_data_bytes
+        return BMPCrawler.VALID, actual_image_data_size, 1, (image_data_bytes,)
 
     @staticmethod
-    def parse_icc_profile(f, dib_header_size: int, icc_profile_size: int, icc_profile_data: int) -> Tuple[int, int, float, tuple]:
+    def parse_icc_profile(f: BinaryIO, dib_header_size: int, icc_profile_size: int, icc_profile_data: int) \
+            -> Tuple[int, int, float, tuple]:
         """
         Parses the ICC Profile
         :param f:  The files stream
@@ -489,5 +516,5 @@ class BMPCrawler(Crawler):
                 icc_color_profile_bytes = f.read(icc_profile_size)
                 if len(icc_color_profile_bytes) < icc_profile_size:
                     return BMPCrawler.NO_MEMORY, -1, 0, ()
-                return BMPCrawler.VALID, icc_profile_data + icc_profile_size, 1, icc_color_profile_bytes
+                return BMPCrawler.VALID, icc_profile_data + icc_profile_size, 1, (icc_color_profile_bytes,)
         return BMPCrawler.VALID, 0, 1, (None,)

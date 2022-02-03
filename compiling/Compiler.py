@@ -47,8 +47,8 @@ class Compiler:
                     start_byte = row["start_byte"]
                     size = row["size"]
                     load_file.seek(start_byte)
-                    bytes = load_file.read(size)
-                    save_file.write(bytes)
+                    data_bytes = load_file.read(size)
+                    save_file.write(data_bytes)
                     save_file.write(separation)
 
     @staticmethod

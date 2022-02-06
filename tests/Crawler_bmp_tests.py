@@ -1,5 +1,5 @@
 from unittest import TestCase
-from crawling.crawlers.file_crawlers.bmp_crawler import BMPCrawler
+from crawling.crawlers.file_crawlers.bmp.bmp_crawler import BMPCrawler
 import os
 
 

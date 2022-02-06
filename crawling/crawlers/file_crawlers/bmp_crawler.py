@@ -44,6 +44,10 @@ class BMPCrawler(Crawler):
     INVALID = 1
     NO_MEMORY = 2
 
+    B = 2 ** 8
+    confidence = -6 * math.log(B, 2) + math.log(127.5 + 1 / B ** 3 + 1.5 / B ** 4, 2)
+
+
     def __init__(self, pools:int, pattern: str):
         # The number of multiprocessing pools to use.
         self.pools = pools
@@ -166,10 +170,7 @@ class BMPCrawler(Crawler):
                 index += offset
 
                 # For the reasoning behind this see the graph.
-                b = 2**8
-                confidence = -6*math.log(b, 2) + math.log(127.5 + 1/b**3 + 1.5/b**4, 2)
-                print(confidence)
-                rows.append([i, i + index, index, confidence])
+                rows.append([i, i + index, index, BMPCrawler.confidence])
         return rows
 
     @staticmethod

@@ -1,10 +1,10 @@
 class ByteArrayOperations:
 
     @staticmethod
-    def bytearray_to_bit_list(bytes_obj: bytearray):
+    def bytearray_to_bit_list(bytes_obj: bytes) -> list:
         """
         Creates a list ob bits (1,0 integers) from bytes
-        :param bytes_obj:
+        :param bytes_obj: The bytes to transform into a list
         :return:
         """
         bits = []
@@ -14,10 +14,10 @@ class ByteArrayOperations:
         return bits
 
     @staticmethod
-    def bytes_crossings(bytes_obj: bytearray):
+    def bytes_crossings(bytes_obj: bytes) -> int:
         """
         Counts the number of 0,1 and 1,0 sequences.
-        :param bytes_obj:
+        :param bytes_obj: The bytes to count the crossings in
         :return:
         """
         crossings = 0

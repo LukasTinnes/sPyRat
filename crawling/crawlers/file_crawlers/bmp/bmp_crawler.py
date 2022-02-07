@@ -44,11 +44,15 @@ class BMPCrawler(Crawler):
     INVALID = 1
     NO_MEMORY = 2
 
+    # For more info on how this number is derived see the graph.
     B = 2 ** 8
-    confidence = -6 * math.log(B, 2) + math.log(127.5 + 1 / B ** 3 + 1.5 / B ** 4, 2)
+    mask_a = (7**2 + 7)/2/B**4/3
+    mask_rgb = (1 - 1/B**4)**3/3 * ((7**2 + 7)/2/(B**4 - 1))**3
+    L = 1/B**3 * (2 * mask_rgb + mask_a)
+    R = 3/(2*B)**4 * (2 * mask_rgb + mask_a)
+    confidence = math.log(103.5/B**6 + 3/B**4 * (L + R), 2)
 
-
-    def __init__(self, pools:int, pattern: str):
+    def __init__(self, pools: int, pattern: str):
         # The number of multiprocessing pools to use.
         self.pools = pools
         self.pattern = pattern
@@ -191,28 +195,24 @@ class BMPCrawler(Crawler):
     @staticmethod
     def _validate_info_block(planes: int, bit_count: int, compression: int, height: int) -> bool:
         """
-
-        :param planes:
-        :param bit_count:
-        :param compression:
-        :param height:
+        Validates the dib header.
+        :param planes: The color planes
+        :param bit_count: The bit_count for each pixel
+        :param compression: The compression method
+        :param height: The height of the image as defined in the BMP header
         :return:
         """
         if not planes == 1:
             return False
-        if not bit_count in [1, 4, 8, 16, 24, 32]:
+        if bit_count not in [1, 4, 8, 16, 24, 32]:
             return False
-        if not compression in [BMPCrawler.BI_RGB, BMPCrawler.BI_RLE8, BMPCrawler.BI_RLE4, BMPCrawler.BI_BITFIELDS,
+        if compression not in [BMPCrawler.BI_RGB, BMPCrawler.BI_RLE8, BMPCrawler.BI_RLE4, BMPCrawler.BI_BITFIELDS,
                                BMPCrawler.BI_JPEP, BMPCrawler.BI_PNG, BMPCrawler.BI_ALPHABITFIELDS, BMPCrawler.BI_CMYK,
                                BMPCrawler.BI_CMYKRLE8, BMPCrawler.BI_CMYKRLE4]:
             return False
         if compression == BMPCrawler.BI_RLE8:
             if not bit_count == 8 or not height >= 0:
                 return False
-            # Ok now this is a problem of conditional probability
-            # Essentially P(compression == BI_RLE8 | bitcount not == 8 or not height >= 0) = P(A|B)
-            # Using Bayes: P(B|A) * P(A)
-
         elif compression == BMPCrawler.BI_RLE4 and (not bit_count == 4 or not height >= 0):
             return False
         elif compression == BMPCrawler.BI_BITFIELDS and bit_count not in [16, 32]:
@@ -220,7 +220,7 @@ class BMPCrawler(Crawler):
         return True
 
     @staticmethod
-    def _validate_color_masks_rgb(r: bytes, g: bytes, b: bytes) -> (bool, float):
+    def _validate_color_masks_rgb(r: bytes, g: bytes, b: bytes) -> bool:
         """
         Validate the rgb color masks.
         :param r: the red mask
@@ -228,82 +228,45 @@ class BMPCrawler(Crawler):
         :param b: the blue mask
         :return:
         """
-        r_arr = ByteArrayOperations.bytearray_to_bit_list(r)
-        g_arr = ByteArrayOperations.bytearray_to_bit_list(g)
-        b_arr = ByteArrayOperations.bytearray_to_bit_list(b)
+        if r == 0 or g == 0 or b == 0:
+            return False
+        are_grouped_r = ByteArrayOperations.are_bits_grouped(r, 1)
+        are_grouped_g = ByteArrayOperations.are_bits_grouped(g, 1)
+        are_grouped_b = ByteArrayOperations.are_bits_grouped(b, 1)
 
-        if r_arr.count(1) == 0 or \
-                g_arr.count(1) == 0 or \
-                b_arr.count(1) == 0:
-            return False, 0
+        if not are_grouped_r or not are_grouped_g or not are_grouped_b:
+            return False
 
-        # The 1/2**number of bits is the probability that the bits are all zero.
-        confidence = (1/2**len(r_arr)) * (1/2**len(g_arr)) * (1/2**len(b_arr))
-
-        crossings_r = ByteArrayOperations.bytes_crossings(r)
-        crossings_g = ByteArrayOperations.bytes_crossings(g)
-        crossings_b = ByteArrayOperations.bytes_crossings(b)
-
-        if crossings_r > 2 or crossings_g > 2 or crossings_b > 2:
-            return False, 0
-
-        # Crossing are given as 00 11 01 01
-        # That means that a crossing has a chance of 0.5 in a uniform distribution.
-        # There is always one less crossing then there are bits in the array.
-        # Since we have three specific states in crossings == 0,1,2
-        # we can model the probability as an addition of the three individual events.
-        # or simply by multiplying the same event 3 times. TODO there is a slight miscalculation here. An array with no crossings might be a zero array, ehich is already accounted for.
-        confidence *= (3/2**(len(r_arr)-1)) * (3/2**(len(g_arr)-1)) * (3/2**(len(b_arr)-1))
-
-        return True, confidence
+        return True
 
     @staticmethod
-    def _validate_color_masks_rgba(r: bytes, g: bytes, b: bytes, a: bytes) -> (bool, float):
+    def _validate_color_masks_rgba(r: bytes, g: bytes, b: bytes, a: bytes) -> bool:
         """
         Validate the rgba mask variety
         :param r: the red mask
         :param g: the green mask
         :param b: the blue mask
-        :param a: te alpha mask
-        :param col_bit_count:
+        :param a: the alpha mask
         :return:
         """
-        r_arr = ByteArrayOperations.bytearray_to_bit_list(r)
-        g_arr = ByteArrayOperations.bytearray_to_bit_list(g)
-        b_arr = ByteArrayOperations.bytearray_to_bit_list(b)
-        a_arr = ByteArrayOperations.bytearray_to_bit_list(a)
+        if r == 0 or g == 0 or b == 0:
+            return False
 
-        if not r_arr.count(1) > 0 or \
-            not g_arr.count(1) > 0 or \
-            not b_arr.count(1) > 0:
-            return False, 0
+        are_grouped_r = ByteArrayOperations.are_bits_grouped(r, 1)
+        are_grouped_g = ByteArrayOperations.are_bits_grouped(g, 1)
+        are_grouped_b = ByteArrayOperations.are_bits_grouped(b, 1)
+        are_grouped_a = ByteArrayOperations.are_bits_grouped(a, 1) or int.from_bytes(a, "little") == 0
 
-        # The 1/2**number of bits is the probability that the bits are all zero. Alpha can be ignored.
-        confidence = (1/2**len(r_arr)) * (1/2**len(g_arr)) * (1/2**len(b_arr))
+        if not are_grouped_r or not are_grouped_g or not are_grouped_b or not are_grouped_a:
+            return False
 
-        crossings_r = ByteArrayOperations.bytes_crossings(r)
-        crossings_g = ByteArrayOperations.bytes_crossings(g)
-        crossings_b = ByteArrayOperations.bytes_crossings(b)
-        crossings_a = ByteArrayOperations.bytes_crossings(a)
-
-        if crossings_r > 2 or crossings_g > 2 or crossings_b > 2 or crossings_a > 2:
-            return False, 0
-
-        # Crossing are given as 00 11 01 01
-        # That means that a crossing has a chance of 0.5 in a uniform distribution.
-        # There is always one less crossing then there are bits in the array.
-        # Since we have three specific states in crossings == 0,1,2
-        # we can model the probability as an addition of the three individual events.
-        # or simply by multiplying the same event 3 times. TODO there is a slight miscalculation here. An array with no crossings might be a zero array, ehich is already accounted for.
-        confidence *= (3/2**(len(r_arr)-1)) * (3/2**(len(g_arr)-1)) * (3/2**(len(b_arr)-1)) * (3/2**(len(a_arr)-1))
-
-        return True, confidence
+        return True
 
     @staticmethod
     def _parse_color_masks_rgb(mask_bytes: bytes) -> Tuple[bytes, bytes, bytes]:
         """
         Parse the color masks of a bmp file.
-        :param mask_bytes:
+        :param mask_bytes: The bytes containing the masks
         :return:
         """
         # Each mask is 4 bytes
@@ -316,7 +279,7 @@ class BMPCrawler(Crawler):
     def _parse_color_masks_rgba(mask_bytes: bytes) -> Tuple[bytes, bytes, bytes, bytes]:
         """
         Parse the color masks of a bmp file.
-        :param mask_bytes:
+        :param mask_bytes: The bytes containing the masks
         :return:
         """
         # Each mask is 4 bytes
@@ -330,7 +293,7 @@ class BMPCrawler(Crawler):
     def _parse_header(f: BinaryIO) -> Tuple[int, int, tuple]:
         """
         Parse header of a bmp file
-        :param header_bytes:
+        :param f: The file stream
         :return:
         """
         header_bytes = f.read(14)
@@ -358,7 +321,7 @@ class BMPCrawler(Crawler):
     def _parse_dib_header(f: BinaryIO) -> Tuple[int, int, tuple]:
         """
         Parse the info block of a bmp file
-        :param info_bytes:
+        :param f: The file stream
         :return:
         """
         # Deal with dib header
@@ -373,8 +336,7 @@ class BMPCrawler(Crawler):
                                    BMPCrawler.BITMAPV4INFOHEADER, BMPCrawler.BITMAPV5INFOHEADER]:
             return BMPCrawler.INVALID, -1, ()
 
-
-        if not dib_header_size in [BMPCrawler.BITMAPINFOHEADER, BMPCrawler.BITMAPV3INFOHEADER,
+        if dib_header_size not in [BMPCrawler.BITMAPINFOHEADER, BMPCrawler.BITMAPV3INFOHEADER,
                                    BMPCrawler.BITMAPV5INFOHEADER]:
             print(f"WARNING! Found Unsupported BMP Type: {dib_header_size}")
             return BMPCrawler.INVALID, -1, ()
@@ -421,9 +383,6 @@ class BMPCrawler(Crawler):
             return BMPCrawler.INVALID, -1, ()
         offset = dib_header_size
 
-        # We can set confidence here since above are only madatory fields.
-
-
         # Optional fields
 
         r, g, b, a = None, None, None, None
@@ -437,7 +396,7 @@ class BMPCrawler(Crawler):
                 if len(mask_bytes) < 3 * 4:
                     return BMPCrawler.NO_MEMORY, -1, ()
                 r, g, b = BMPCrawler._parse_color_masks_rgb(mask_bytes)
-                valid, mask_conf = BMPCrawler._validate_color_masks_rgb(r, g, b)
+                valid = BMPCrawler._validate_color_masks_rgb(r, g, b)
                 if not valid:
                     return BMPCrawler.INVALID, -1, ()
         if dib_header_size == BMPCrawler.BITMAPV3INFOHEADER:
@@ -446,7 +405,7 @@ class BMPCrawler(Crawler):
                 if len(mask_bytes) < 4 * 4:
                     return BMPCrawler.NO_MEMORY, -1, ()
                 r, g, b, a = BMPCrawler._parse_color_masks_rgba(mask_bytes)
-                valid, mask_conf = BMPCrawler._validate_color_masks_rgba(r, g, b, a)
+                valid = BMPCrawler._validate_color_masks_rgba(r, g, b, a)
                 if not valid:
                     return BMPCrawler.INVALID, -1, ()
         if dib_header_size == BMPCrawler.BITMAPV5INFOHEADER:
@@ -456,7 +415,7 @@ class BMPCrawler(Crawler):
                 if len(mask_bytes) < 4 * 4:
                     return BMPCrawler.NO_MEMORY, -1, ()
                 r, g, b, a = BMPCrawler._parse_color_masks_rgba(mask_bytes)
-                valid, mask_conf = BMPCrawler._validate_color_masks_rgba(r, g, b, a)
+                valid = BMPCrawler._validate_color_masks_rgba(r, g, b, a)
                 if not valid:
                     return BMPCrawler.INVALID, -1, ()
 
@@ -465,8 +424,8 @@ class BMPCrawler(Crawler):
             icc_profile_size = int.from_bytes(remaining_bytes[-4 * 2:-4 * 1], "little", signed=False)
 
         return BMPCrawler.VALID, offset, (dib_header_size, width, height, planes, bit_count, compression, size_img,
-                                             pix_per_meter_X, pix_per_meter_Y, col_bit_count, color_important,
-                                             r, g, b, a, icc_profile_data, icc_profile_size)
+                                          pix_per_meter_X, pix_per_meter_Y, col_bit_count, color_important,
+                                          r, g, b, a, icc_profile_data, icc_profile_size)
 
     @staticmethod
     def parse_color_table(f: BinaryIO, col_bit_count: int, bit_count: int, dib_header_size: int) -> Tuple[int, int, tuple]:

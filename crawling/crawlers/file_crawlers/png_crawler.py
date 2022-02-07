@@ -1,5 +1,6 @@
 import logging
 import os
+from itertools import chain
 from multiprocessing import Pool
 
 from pandas import DataFrame
@@ -62,37 +63,45 @@ def end_not_found(next_bytes):
     return next_bytes != b"IEND"
 
 
+def define_dataframe(rows):
+    df = DataFrame(rows)
+    df.rename(columns={0: "start_byte", 1: "end_byte", 2: "size", 3: "confidence"}, inplace=True)
+    return df
+
+
 class PNGCrawler(FileCrawler):
     POOL_SIZE = 4
     SIGNATURE_SIZE = 11
     HEADER_SIZE = 17
     END_HEADER_SIZE = 4
     END_OF_FILE_FOUND = -1
-    END_HEADER_CRC = 3
+    END_HEADER_CRC = 2
 
     def __init__(self):
         self.MAX_FILE_SIZE = 0
-        self.rows = []
+
+    def obtain_dataframe_rows(self, file):
+        return list(chain.from_iterable(self.crawl_by_pools(file)))
 
     def crawl(self, file: str) -> CrawlData:
         self.MAX_FILE_SIZE = get_max_size_of_file(file)
-        self.crawl_by_pools(file)
-        df = self.define_dataframe()
+        rows = self.obtain_dataframe_rows(file)
+        df = define_dataframe(rows)
         return CrawlData(df, "png")  # TODO pattern string
 
-    def define_dataframe(self):
-        df = DataFrame(self.rows)
-        df.rename(columns={0: "start_byte", 1: "end_byte", 2: "size", 3: "confidence"}, inplace=True)
-        return df
-
-    def crawl_range(self, file, start, stop):
+    def crawl_range(self, args):
+        file = args[0]
+        start = args[1]
+        stop = args[2]
+        rows = []
         with open(file, "rb") as f:
             for index in range(start, stop):
                 if self.header_is_in_bounds(index):
                     signature, carriage_return, line_feed, text_close, line_feed_2, zero_bytes = parse_header(f,
                                                                                                               index)
                     if signature_is_valid(signature, carriage_return, line_feed, text_close, line_feed_2, zero_bytes):
-                        self.add_row(file, index)
+                        self.add_row(file, index, rows)
+        return rows
 
     def header_is_in_bounds(self, index):
         return index + self.SIGNATURE_SIZE < self.MAX_FILE_SIZE
@@ -100,15 +109,15 @@ class PNGCrawler(FileCrawler):
     def crawl_by_pools(self, file: str):
         ranges = self.get_crawl_ranges(file)
         with Pool(self.POOL_SIZE) as pool:
-            pool.starmap(self.crawl_range, ranges)
+            return pool.map(self.crawl_range, ranges)
 
-    def add_row(self, file, index):
+    def add_row(self, file, index, rows):
         start_byte = index
         end_byte = self.find_end_byte(file, index)
         if end_byte_exists(end_byte):
             size = end_byte - start_byte
             confidence = 0
-            self.rows.append([start_byte, end_byte, size, confidence])
+            rows.append([start_byte, end_byte, size, confidence])
 
     def find_end_byte(self, file, index):
         return_index = index

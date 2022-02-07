@@ -769,7 +769,7 @@ Since there are 3 bytes the total prbability comes out as sum^3<y:LabelModel>
                               <y:Shape type="roundrectangle"/>
                               <y:State closed="false" closedHeight="50.0" closedWidth="50.0" innerGraphDisplayEnabled="false"/>
                               <y:Insets bottom="5" bottomF="5.0" left="5" leftF="5.0" right="5" rightF="5.0" top="5" topF="5.0"/>
-                              <y:BorderInsets bottom="123" bottomF="122.97082812500003" left="25" leftF="25.288996914908694" right="0" rightF="0.0" top="0" topF="0.0"/>
+                              <y:BorderInsets bottom="95" bottomF="94.61774041384592" left="25" leftF="25.288996914908694" right="0" rightF="0.0" top="0" topF="0.0"/>
                             </y:GroupNode>
                             <y:GroupNode>
                               <y:Geometry height="50.0" width="50.0" x="1575.519807436916" y="704.5812518667382"/>
@@ -823,11 +823,11 @@ Since there are 3 bytes the total prbability comes out as sum^3<y:LabelModel>
                         <node id="n0::n1::n6::n0::n1::n2">
                           <data key="d6">
                             <y:ShapeNode>
-                              <y:Geometry height="39.502719999999954" width="126.62508043010735" x="3078.1628536821636" y="955.9823897916817"/>
+                              <y:Geometry height="67.85580771115406" width="126.62508043010735" x="3078.1628536821636" y="955.9823897916817"/>
                               <y:Fill color="#FFCC00" transparent="false"/>
                               <y:BorderStyle color="#000000" raised="false" type="line" width="1.0"/>
-                              <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="33.40234375" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="106.9609375" x="9.83207146505356" y="3.050188124999977">Grouped
-((7^2+7)/2/(b -1))^3<y:LabelModel>
+                              <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="33.40234375" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="119.265625" x="3.6797277150535592" y="17.22673198057703">Grouped
+((7^2+7)/2/(b^4 -1))^3<y:LabelModel>
                                   <y:SmartNodeLabelModel distance="4.0"/>
                                 </y:LabelModel>
                                 <y:ModelParameter>
@@ -912,11 +912,11 @@ Since there are 3 bytes the total prbability comes out as sum^3<y:LabelModel>
                         <node id="n0::n1::n6::n0::n1::n7">
                           <data key="d6">
                             <y:ShapeNode>
-                              <y:Geometry height="30.0" width="152.95163150133953" x="2915.4407490460944" y="960.7337497916819"/>
+                              <y:Geometry height="30.0" width="152.95163150133953" x="2915.4407490460944" y="974.9102936472588"/>
                               <y:Fill color="#FFCC00" transparent="false"/>
                               <y:BorderStyle color="#000000" raised="false" type="line" width="1.0"/>
                               <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="33.40234375" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="151.662109375" x="0.6447610631698808" y="-1.701171875">mask_rgb = (1-1/b^4)^3/3 * 
-((7^2+7)/2/(b-1))^3<y:LabelModel>
+((7^2+7)/2/(b^4-1))^3<y:LabelModel>
                                   <y:SmartNodeLabelModel distance="4.0"/>
                                 </y:LabelModel>
                                 <y:ModelParameter>

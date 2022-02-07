@@ -75,7 +75,7 @@ class BMPCrawler(Crawler):
             rows = list(itertools.chain.from_iterable(results))
 
         df = DataFrame(rows)
-        df.rename(columns={0:"start_byte", 1:"end_byte", 2: "size", 3: "confidence"}, inplace=True)
+        df.rename(columns={0: "start_byte", 1: "end_byte", 2: "size", 3: "confidence"}, inplace=True)
         return CrawlData(df, self.pattern)
 
     @staticmethod
@@ -85,8 +85,6 @@ class BMPCrawler(Crawler):
         :param args: Tuple of shape (start_byte, end_byte)
         :return:
         """
-        # For more information see the Markdown
-
         # Parse args from pool back to what they were.
         start = args[0]
         end = args[1]

@@ -1,10 +1,11 @@
-import numpy as np
 import logging
-from crawling.crawlers.file_crawler import FileCrawler
-from crawling.crawler_data_structures.crawl_data import CrawlData
 import os
-from pandas import DataFrame
 from multiprocessing import Pool
+
+from pandas import DataFrame
+
+from crawling.crawler_data_structures.crawl_data import CrawlData
+from crawling.crawlers.file_crawler import FileCrawler
 
 logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
 
@@ -57,10 +58,17 @@ def parse_header(file, index):
     return signature, carriage_return, line_feed, text_close, line_feed_2, zero_bytes
 
 
+def end_not_found(next_bytes):
+    return next_bytes != b"IEND"
+
+
 class PNGCrawler(FileCrawler):
     POOL_SIZE = 4
     SIGNATURE_SIZE = 11
     HEADER_SIZE = 17
+    END_HEADER_SIZE = 4
+    END_OF_FILE_FOUND = -1
+    END_HEADER_CRC = 3
 
     def __init__(self):
         self.MAX_FILE_SIZE = 0
@@ -103,27 +111,18 @@ class PNGCrawler(FileCrawler):
             self.rows.append([start_byte, end_byte, size, confidence])
 
     def find_end_byte(self, file, index):
+        return_index = index
         with open(file, "rb") as f:
-            current_index = index + self.SIGNATURE_SIZE + self.HEADER_SIZE + 1
-            f.seek(current_index)
-            current_size_chunk = f.read(4)
-            current_size = png_chunk_to_size(current_size_chunk)
-            current_chunk_type = f.read(4)
-            while current_chunk_type != b"IEND" and current_index < self.MAX_FILE_SIZE:
-                current_index += current_size + 4
-                f.seek(current_index)
-                current_size_chunk = f.read(4)
-                current_size = png_chunk_to_size(current_size_chunk)
-                current_chunk_type = f.read(4)
-            if current_index >= self.MAX_FILE_SIZE:
-                return -1
-            return current_index + 12
+            f.seek(index)
+            next_bytes = f.read(self.END_HEADER_SIZE)
+            while end_not_found(next_bytes):
+                if return_index >= self.MAX_FILE_SIZE:
+                    return self.END_OF_FILE_FOUND
+                f.seek(return_index)
+                next_bytes = f.read(self.END_HEADER_SIZE)
+                return_index += 1
+            return return_index + self.END_HEADER_SIZE + self.END_HEADER_CRC
 
     def get_crawl_ranges(self, file):
         pairs = get_pairs(file, self.MAX_FILE_SIZE, self.POOL_SIZE)
         return pairs
-
-
-if __name__ == "__main__":
-    test = PNGCrawler()
-    test.crawl("C:\\Users\\Lukers\\Documents\\fouroclocks.png")

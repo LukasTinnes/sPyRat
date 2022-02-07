@@ -31,3 +31,26 @@ class ByteArrayOperations:
                     crossings += 1
 
         return crossings
+
+    @staticmethod
+    def are_bits_grouped(bytes_obj: bytes, bit: int) -> int:
+        """
+        Determibnes wther all values either 0,1, are next to each other.
+        :return:
+        """
+        last = -1
+
+        groups_0 = 0
+        groups_1 = 0
+        for x in ByteArrayOperations.bytearray_to_bit_list(bytes_obj):
+            if not x == last:
+                if x == 0:
+                    groups_0 += 1
+                else:
+                    groups_1 += 1
+            last = x
+
+        if bit == 0:
+            return groups_0 == 1
+        else:
+            return groups_1 == 1

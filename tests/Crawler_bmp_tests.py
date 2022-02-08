@@ -1,11 +1,13 @@
 from crawling.crawlers.file_crawlers.bmp.bmp_crawler import BMPCrawler
 import os
+import pytest
 
 
 PATH_PDN = "files\\bmp\\paintdotnet\\"
 PATH_PAINT = "files\\bmp\\paint\\"
 PATH_GIMP = "files\\bmp\\gimp\\"
 PATH_WIKI = "files\\bmp\\wiki\\"
+PATH_EXTRA = "files\\bmp\\extra\\"
 
 POOLS = 4
 PATTERN = "bmp"
@@ -152,3 +154,13 @@ def test_wiki_ex1_bmp():
     frame = crawler.crawl(PATH_WIKI + "wiki_1.bmp")
     assert frame.get_data_frame().shape[0] == 1
     assert (frame.get_data_frame()["size"]).iloc[0] == os.path.getsize(PATH_WIKI + "wiki_1.bmp")
+
+# Slow tests
+
+
+@pytest.mark.slow
+def test_hd_bmp():
+    crawler = BMPCrawler(POOLS, PATTERN)
+    frame = crawler.crawl(PATH_EXTRA + "synth spiral.bmp")
+    assert frame.get_data_frame().shape[0] == 1
+    assert (frame.get_data_frame()["size"]).iloc[0] == os.path.getsize(PATH_EXTRA + "synth spiral.bmp")

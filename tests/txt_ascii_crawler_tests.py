@@ -1,13 +1,19 @@
-from unittest import TestCase
 from crawling.crawlers.file_crawlers.text_crawlers.txt_ascii_crawler import TxtAsciiCrawler
 
 
-class TxtAsciiCrawlerTests(TestCase):
+PATH = "files\\txt\\"
 
-    PATH = "files\\txt\\"
 
-    def test_alphabet(self):
-        crawler = TxtAsciiCrawler(0)
-        crawl_data = crawler.crawl(self.PATH + "Alphabet_ascii.txt")
-        frame = crawl_data.get_data_frame()
-        self.assertGreater(frame.shape[0], 0)
+def test_alphabet():
+    crawler = TxtAsciiCrawler(0)
+    crawl_data = crawler.crawl(PATH + "Alphabet_ascii.txt")
+    frame = crawl_data.get_data_frame()
+    assert frame.shape[0] == 1
+
+
+def test_alphabet_broken():
+    crawler = TxtAsciiCrawler(0)
+    crawl_data = crawler.crawl(PATH + "Alphabet_broken_ascii.txt")
+    frame = crawl_data.get_data_frame()
+    assert frame.shape[0] == 2
+

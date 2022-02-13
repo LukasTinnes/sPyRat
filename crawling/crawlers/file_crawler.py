@@ -21,7 +21,7 @@ class FileCrawler(Crawler):
     def crawl_in_range(self, file: str, start_byte: int, end_byte: int) -> CrawlData:
         """
         Crawls the file for a file pattern between the start byte (inclusive) and the end_byte (exclusive).
-        :param file: Tjhe file path
+        :param file: The file path
         :param start_byte: The byte to start crawling at.
         :param end_byte: The byte to end crawling at.
         :return:
@@ -32,8 +32,8 @@ class FileCrawler(Crawler):
     def crawl_at_byte(self, file:str, start_byte: int = 0) -> CrawlData:
         """
         Crawls for a file pattern at the specific byte given.
-        :param file: The filepath.
-        :param start_byte: The byte to start crawling at.
+        :param file: The file path.
+        :param start_byte: The byte to crawl at.
         :return:
         """
         ...

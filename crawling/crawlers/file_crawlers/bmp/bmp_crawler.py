@@ -65,10 +65,22 @@ class BMPCrawler(Crawler):
         """
         file_size_in_bytes = os.path.getsize(file)
 
+        return self.crawl_in_range(file, 0, file_size_in_bytes)
+
+    def crawl_in_range(self, file: str, start_byte: int, end_byte: int) -> CrawlData: # TODO check bounds
+        """
+        Crawls the file for a file pattern between the start byte (inclusive) and the end_byte (exclusive).
+        :param file: The file path
+        :param start_byte: The byte to start crawling at.
+        :param end_byte: The byte to end crawling at.
+        :return:
+        """
+        size = end_byte - start_byte
+
         # Open pools to work in parallel
         with Pool(self.pools) as p:
             # The crawling ranges are divided into approx. equal sections.
-            ranges = [(round(x*file_size_in_bytes/self.pools), round((x+1)*file_size_in_bytes/self.pools), file) for x in range(self.pools)]
+            ranges = [(round(x*size/self.pools), round((x+1)*size/self.pools), file) for x in range(self.pools)]
 
             results = p.map(self.crawl_range, ranges)
             # Concatenate results in list
@@ -77,6 +89,15 @@ class BMPCrawler(Crawler):
         df = DataFrame(rows)
         df.rename(columns={0: "start_byte", 1: "end_byte", 2: "size", 3: "confidence"}, inplace=True)
         return CrawlData(df, self.pattern)
+
+    def crawl_at_byte(self, file: str, start_byte: int = 0) -> CrawlData:
+        """
+        Crawls for a file pattern at the specific byte given.
+        :param file: The file path.
+        :param start_byte: The byte to crawl at.
+        :return:
+        """
+        return self.crawl_in_range(file, start_byte, start_byte+1) # TODO check bounds
 
     @staticmethod
     def crawl_range(args):
@@ -93,6 +114,7 @@ class BMPCrawler(Crawler):
         rows = []
         with open(file, "rb") as f:
             for i in range(start, end):
+                f.seek(i) # TODO this can be made unecessary if it is reset everytime after continue.
                 # Entries that are not relevant need to be excluded as quickly as possible.
                 test_bytes = f.read(2)
                 try:
@@ -101,7 +123,6 @@ class BMPCrawler(Crawler):
                         continue
                 except:
                     continue
-                f.seek(i)
 
                 # The current offset from i
                 index = 0

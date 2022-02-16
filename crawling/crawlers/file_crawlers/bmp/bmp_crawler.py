@@ -75,12 +75,16 @@ class BMPCrawler(Crawler):
         :param end_byte: The byte to end crawling at.
         :return:
         """
+        assert 0 <= start_byte < os.path.getsize(file)
+        assert 0 <= end_byte <= os.path.getsize(file)
+        assert start_byte <= end_byte
+
         size = end_byte - start_byte
 
         # Open pools to work in parallel
         with Pool(self.pools) as p:
             # The crawling ranges are divided into approx. equal sections.
-            ranges = [(round(x*size/self.pools), round((x+1)*size/self.pools), file) for x in range(self.pools)]
+            ranges = [(start_byte+round(x*size/self.pools), start_byte+round((x+1)*size/self.pools), file) for x in range(self.pools)]
 
             results = p.map(self.crawl_range, ranges)
             # Concatenate results in list
@@ -97,7 +101,7 @@ class BMPCrawler(Crawler):
         :param start_byte: The byte to crawl at.
         :return:
         """
-        return self.crawl_in_range(file, start_byte, start_byte+1) # TODO check bounds
+        return self.crawl_in_range(file, start_byte, start_byte+1)
 
     @staticmethod
     def crawl_range(args):
@@ -114,7 +118,7 @@ class BMPCrawler(Crawler):
         rows = []
         with open(file, "rb") as f:
             for i in range(start, end):
-                f.seek(i) # TODO this can be made unecessary if it is reset everytime after continue.
+                f.seek(i)
                 # Entries that are not relevant need to be excluded as quickly as possible.
                 test_bytes = f.read(2)
                 try:
@@ -123,7 +127,7 @@ class BMPCrawler(Crawler):
                         continue
                 except:
                     continue
-
+                f.seek(i)
                 # The current offset from i
                 index = 0
 
@@ -132,7 +136,7 @@ class BMPCrawler(Crawler):
                 if validation == BMPCrawler.INVALID:
                     continue
                 elif validation == BMPCrawler.NO_MEMORY:
-                    break
+                    break  # TODO the breaks might lead to some errors.
                 index += byte_offset
                 header_field_string, header_size, bytes_06, bytes_08, image_offset = header_data
 

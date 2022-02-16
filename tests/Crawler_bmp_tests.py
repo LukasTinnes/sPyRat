@@ -155,6 +155,19 @@ def test_wiki_ex1_bmp():
     assert frame.get_data_frame().shape[0] == 1
     assert (frame.get_data_frame()["size"]).iloc[0] == os.path.getsize(PATH_WIKI + "wiki_1.bmp")
 
+# Misc functions test.
+
+def test_wiki_ex1_bmp_0():
+    crawler = BMPCrawler(POOLS, PATTERN)
+    frame = crawler.crawl_at_byte(PATH_WIKI + "wiki_1.bmp")
+    assert frame.get_data_frame().shape[0] == 1
+    assert (frame.get_data_frame()["size"]).iloc[0] == os.path.getsize(PATH_WIKI + "wiki_1.bmp")
+
+def test_wiki_ex1_bmp_1():
+    crawler = BMPCrawler(POOLS, PATTERN)
+    frame = crawler.crawl_at_byte(PATH_WIKI + "wiki_1.bmp", 1)
+    assert frame.get_data_frame().shape[0] == 0
+
 # Slow tests
 
 

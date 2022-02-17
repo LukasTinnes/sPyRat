@@ -125,80 +125,75 @@ class BMPCrawler(Crawler):
                     header_field_string = test_bytes.decode("ASCII")
                     if not header_field_string in ["BM"]:
                         continue
-                except:
+                except UnicodeError:
                     continue
                 f.seek(i)
-                # The current offset from i
-                index = 0
 
-                # Parse the BMP Header
-                validation, byte_offset, header_data = BMPCrawler._parse_header(f)
-                if validation == BMPCrawler.INVALID:
+                validation, index = BMPCrawler.parse_bmp(f)
+                if not validation == BMPCrawler.VALID:
                     continue
-                elif validation == BMPCrawler.NO_MEMORY:
-                    break  # TODO the breaks might lead to some errors.
-                index += byte_offset
-                header_field_string, header_size, bytes_06, bytes_08, image_offset = header_data
-
-
-                # Parse the DIB Header
-                validation, offset, dib_data = BMPCrawler._parse_dib_header(f)
-                if validation == BMPCrawler.INVALID:
-                    continue
-                elif validation == BMPCrawler.NO_MEMORY:
-                    break
-                index += offset
-                dib_header_size, width, height, planes, bit_count, compression, size_img, pix_per_meter_X, pix_per_meter_Y, \
-                    col_bit_count, color_important, r, g, b, a, icc_profile_data, icc_profile_size = dib_data
-
-
-                # Color table
-                validation, offset, color_table_data = BMPCrawler.parse_color_table(f, col_bit_count, bit_count, dib_header_size)
-                if validation == BMPCrawler.INVALID:
-                    continue
-                elif validation == BMPCrawler.NO_MEMORY:
-                    break
-                index += offset
-
-
-                # Deal with Gap1
-                validation, offset, gap1_data = BMPCrawler.parse_gap1(f, index, image_offset)
-                if validation == BMPCrawler.INVALID:
-                    continue
-                elif validation == BMPCrawler.NO_MEMORY:
-                    break
-                index += offset
-
-
-                # image data
-                validation, offset, image_data = BMPCrawler.parse_image_data(f, compression, bit_count, width, height, size_img)
-                if validation == BMPCrawler.INVALID:
-                    continue
-                elif validation == BMPCrawler.NO_MEMORY:
-                    break
-                index += offset
-
-
-                # Deal with Gap2
-                validation, offset, gap2_data = BMPCrawler.parse_gap2(f, index, icc_profile_data)
-                if validation == BMPCrawler.INVALID:
-                    continue
-                elif validation == BMPCrawler.NO_MEMORY:
-                    break
-                index += offset
-
-
-                # ICC Profile Data
-                validation, offset, icc_profile_data_block = BMPCrawler.parse_icc_profile(f, dib_header_size, icc_profile_size, icc_profile_data)
-                if validation == BMPCrawler.INVALID:
-                    continue
-                elif validation == BMPCrawler.NO_MEMORY:
-                    break
-                index += offset
-
                 # For the reasoning behind this see the graph.
                 rows.append([i, i + index, index, BMPCrawler.confidence])
         return rows
+
+    @staticmethod
+    def parse_bmp(f: BinaryIO) -> Tuple[int, int]:
+        """
+        Parses a BMP file starting at the head of the given file stream.
+        :param f: The file stream
+        :return:
+        """
+        # The current offset from i
+        index = 0
+
+        # Parse the BMP Header
+        validation, byte_offset, header_data = BMPCrawler._parse_header(f)
+        if not validation == BMPCrawler.VALID:
+            return validation, -1
+        index += byte_offset
+        header_field_string, header_size, bytes_06, bytes_08, image_offset = header_data
+
+        # Parse the DIB Header
+        validation, offset, dib_data = BMPCrawler._parse_dib_header(f)
+        if not validation == BMPCrawler.VALID:
+            return validation, -1
+        index += offset
+        dib_header_size, width, height, planes, bit_count, compression, size_img, pix_per_meter_X, pix_per_meter_Y, \
+        col_bit_count, color_important, r, g, b, a, icc_profile_data, icc_profile_size = dib_data
+
+        # Color table
+        validation, offset, color_table_data = BMPCrawler.parse_color_table(f, col_bit_count, bit_count,
+                                                                            dib_header_size)
+        if not validation == BMPCrawler.VALID:
+            return validation, -1
+        index += offset
+
+        # Deal with Gap1
+        validation, offset, gap1_data = BMPCrawler.parse_gap1(f, index, image_offset)
+        if not validation == BMPCrawler.VALID:
+            return validation, -1
+        index += offset
+
+        # image data
+        validation, offset, image_data = BMPCrawler.parse_image_data(f, compression, bit_count, width, height, size_img)
+        if not validation == BMPCrawler.VALID:
+            return validation, -1
+        index += offset
+
+        # Deal with Gap2
+        validation, offset, gap2_data = BMPCrawler.parse_gap2(f, index, icc_profile_data)
+        if not validation == BMPCrawler.VALID:
+            return validation, -1
+        index += offset
+
+        # ICC Profile Data
+        validation, offset, icc_profile_data_block = BMPCrawler.parse_icc_profile(f, dib_header_size, icc_profile_size,
+                                                                                  icc_profile_data)
+        if not validation == BMPCrawler.VALID:
+            return validation, -1
+        index += offset
+
+        return BMPCrawler.VALID, index
 
     @staticmethod
     def _validate_color_table(table_bytes: bytearray) -> (bool, float):

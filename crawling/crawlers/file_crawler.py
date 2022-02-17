@@ -15,7 +15,7 @@ class FileCrawler(Crawler):
         :param file:
         :return:
         """
-        pass
+        ...
 
     @abstractmethod
     def crawl_in_range(self, file: str, start_byte: int, end_byte: int) -> CrawlData:

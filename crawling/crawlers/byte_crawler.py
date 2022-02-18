@@ -49,7 +49,7 @@ class ByteCrawler(FileCrawler):
             second_first = second[0]
 
             # Check if the second string starts exactly where the first ends.
-            if first_last[1] == second_first[0] - 1:
+            if first_last[1] == second_first[0]:
                 # Create a new string combing the original ones.
                 new_element = [first_last[0], second_first[1], second_first[1] - first_last[0],
                                first_last[3] + second_first[3]]
@@ -91,7 +91,7 @@ class ByteCrawler(FileCrawler):
                         read_state = False
             if read_state:
                 confidence = math.log((len(self.elements) / 256) ** (end-1 - read_byte), 2)
-                rows.append([read_byte, end-1, end-1 - read_byte, confidence])
+                rows.append([read_byte, end, end - read_byte, confidence])
         return rows
 
     def crawl_in_range(self, file: str, start_byte: int, end_byte: int) -> CrawlData:

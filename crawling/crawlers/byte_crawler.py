@@ -25,22 +25,7 @@ class ByteCrawler(FileCrawler):
         :param file: The file path
         :return:
         """
-        file_size_in_bytes = os.path.getsize(file)
-
-        with Pool(self.POOLS) as p:
-            # The crawling ranges are divided into approx. equal sections.
-            ranges = [(round(x*file_size_in_bytes/self.POOLS), round((x+1)*file_size_in_bytes/self.POOLS), file) for x in range(self.POOLS)]
-
-            results = p.map(self.crawl_range, ranges)
-            results = self._fix_overlap(results)
-
-            # Concatenate results in list
-            rows = list(itertools.chain.from_iterable(results))
-
-
-        df = DataFrame(rows)
-        df.rename(columns={0: "start_byte", 1: "end_byte", 2: "size", 3: "confidence"}, inplace=True)
-        return CrawlData(df, self.pattern)
+        return self.crawl_in_range(file, 0, os.path.getsize(file))
 
     def _fix_overlap(self, results: list) -> list:
         """
@@ -108,3 +93,36 @@ class ByteCrawler(FileCrawler):
                 confidence = math.log((len(self.elements) / 256) ** (end-1 - read_byte), 2)
                 rows.append([read_byte, end-1, end-1 - read_byte, confidence])
         return rows
+
+    def crawl_in_range(self, file: str, start_byte: int, end_byte: int) -> CrawlData:
+        """
+        Crawls the file for the bytes between the start byte (inclusive) and the end_byte (exclusive).
+        :param file: The file path
+        :param start_byte: The byte to start crawling at.
+        :param end_byte: The byte to end crawling at.
+        :return:
+        """
+        size= end_byte - start_byte
+
+        with Pool(self.POOLS) as p:
+            # The crawling ranges are divided into approx. equal sections.
+            ranges = [(start_byte + round(x*size/self.POOLS), start_byte + round((x+1)*size/self.POOLS), file) for x in range(self.POOLS)]
+
+            results = p.map(self.crawl_range, ranges)
+            results = self._fix_overlap(results)
+
+            # Concatenate results in list
+            rows = list(itertools.chain.from_iterable(results))
+
+        df = DataFrame(rows)
+        df.rename(columns={0: "start_byte", 1: "end_byte", 2: "size", 3: "confidence"}, inplace=True)
+        return CrawlData(df, self.pattern)
+
+    def crawl_at_byte(self, file: str, start_byte: int = 0) -> CrawlData:
+        """
+        Crawls for a bytes at the specific byte given.
+        :param file: The file path.
+        :param start_byte: The byte to crawl at.
+        :return:
+        """
+        return self.crawl_in_range(file, start_byte, start_byte+1)

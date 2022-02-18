@@ -32,20 +32,8 @@ class ByteCrawler(FileCrawler):
             ranges = [(round(x*file_size_in_bytes/self.POOLS), round((x+1)*file_size_in_bytes/self.POOLS), file) for x in range(self.POOLS)]
 
             results = p.map(self.crawl_range, ranges)
-            for x in range(len(results)-1):
-                first = results[x]
-                second = results[x+1]
-                if len(first) == 0 or len(second) == 0:
-                    continue
-                first_last = first[-1]
-                second_last = second[-1]
-                if first_last[1] == second_last[0]-1:
-                    new_element = [first_last[0], second_last[1], second_last[1] - first_last[0],
-                                   first_last[3] + second_last[3]]
-                    first = first[:-1]
-                    second = [new_element] + second[1:]
-                    results[x] = first
-                    results[x+1] = second
+            results = self._fix_overlap(results)
+
             # Concatenate results in list
             rows = list(itertools.chain.from_iterable(results))
 
@@ -53,6 +41,40 @@ class ByteCrawler(FileCrawler):
         df = DataFrame(rows)
         df.rename(columns={0: "start_byte", 1: "end_byte", 2: "size", 3: "confidence"}, inplace=True)
         return CrawlData(df, self.pattern)
+
+    def _fix_overlap(self, results: list) -> list:
+        """
+        Concatenates strings together that overlap over multiple buckets.
+        :param results: The results given by the crawling.
+        :return:
+        """
+        # The last bin can be excluded
+        for x in range(len(results) - 1):
+
+            # Get the two bins to search for strings in.
+            first = results[x]
+            second = results[x + 1]
+
+            # If either of the bins are emtpy, we don't care.
+            if len(first) == 0 or len(second) == 0:
+                continue
+
+            # We only need to care about the resluts that may be directly adjacent.
+            first_last = first[-1]
+            second_first = second[0]
+
+            # Check if the second string starts exactly where the first ends.
+            if first_last[1] == second_first[0] - 1:
+                # Create a new string combing the original ones.
+                new_element = [first_last[0], second_first[1], second_first[1] - first_last[0],
+                               first_last[3] + second_first[3]]
+
+                # Remove old string, add new string.
+                first = first[:-1]
+                second = [new_element] + second[1:]
+                results[x] = first
+                results[x + 1] = second
+        return results
 
     def crawl_range(self, args):
         """
